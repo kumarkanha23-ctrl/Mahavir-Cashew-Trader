@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Mahavir Cashew Trader - Offline ERP for cashew trading" />
+  <title>Mahavir Cashew Trader</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-icon">🥜</span>
+        <div>
+          <strong>Mahavir</strong>
+          <small>Cashew Trader</small>
+        </div>
+      </div>
+      <nav class="sidebar-nav" id="sidebarNav"></nav>
+    </aside>
+    <div class="main-wrapper">
+      <header class="header app-header">
+        <div class="header-left">
+          <button type="button" class="menu-toggle" id="menuToggle" aria-label="Toggle menu">☰</button>
+          <h1 class="page-heading" id="pageHeading">Dashboard</h1>
+        </div>
+        <div class="header-right">
+          <span class="header-badge">Offline ERP v1</span>
+        </div>
+      </header>
+      <main id="mainContent" class="main-content"></main>
+      <footer class="app-footer">
+        <p>Mahavir Cashew Trader &copy; 2026 — Data stored locally on this device</p>
+      </footer>
+    </div>
+  </div>
+  <div id="toastContainer" class="toast-container"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
