@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "outputDirectory": "public",
+  "public": true,
   "builds": [
     {
       "src": "package.json",

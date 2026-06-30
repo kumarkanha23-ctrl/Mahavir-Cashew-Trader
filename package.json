@@ -4,7 +4,7 @@
   "description": "Mahavir Cashew Trader ERP with Firebase Auth and Firestore sync",
   "scripts": {
     "start": "npx --yes serve -l 3000",
-    "build": "node -e \"console.log('Static site ready for Vercel deployment')\""
+    "build": "node scripts/prepare-public.js"
   },
   "dependencies": {
     "firebase": "^12.15.0"
