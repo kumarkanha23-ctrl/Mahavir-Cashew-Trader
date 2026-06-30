@@ -14,6 +14,7 @@ import { DEFAULT_COMMISSION_PER_KG, BUCKET_TO_KG } from '../../config.js';
 
 function getFormData(form) {
   return {
+    type: form.type.value,
     date: form.date.value,
     partyName: form.partyName.value,
     factoryName: form.factoryName.value,
@@ -42,27 +43,83 @@ function buildDealForm(editId = null) {
   const form = el('form', { className: 'dealBox' });
   form.innerHTML = `
     <h2>${existing ? 'Edit Deal' : 'New Deal'}</h2>
-    <div class="grid grid-5">
-      <input name="date" type="date" value="${existing?.date || todayISO()}" required />
-      <input name="partyName" list="partyList" placeholder="Party Name" value="${existing?.partyName || ''}" required />
-      <input name="factoryName" list="factoryList" placeholder="Factory Name" value="${existing?.factoryName || ''}" required />
-      <input name="grade" list="gradeList" placeholder="Grade" value="${existing?.grade || ''}" required />
-      <input name="bucket" type="number" step="0.01" min="0" placeholder="Bucket" value="${existing?.bucket ?? ''}" />
-      <input name="kg" type="number" step="0.001" min="0" placeholder="KG (auto: Bucket × ${settings.bucketToKg || BUCKET_TO_KG})" value="${existing?.kg ?? ''}" />
-      <input name="factoryRate" type="number" step="0.01" min="0" placeholder="Factory Rate (₹/KG)" value="${existing?.factoryRate ?? ''}" required />
-      <input name="commissionPerKg" type="number" step="0.01" min="0" placeholder="Commission (₹/KG)" value="${existing?.commissionPerKg ?? settings.defaultCommissionPerKg ?? DEFAULT_COMMISSION_PER_KG}" required />
-      <input name="partyRate" type="number" step="0.01" readonly class="readonly" placeholder="Party Rate" value="${existing?.partyRate ?? ''}" />
-      <input name="purchaseAmount" readonly class="readonly" placeholder="Purchase Amount" />
-      <input name="saleAmount" readonly class="readonly" placeholder="Sale Amount" />
-      <input name="profit" readonly class="readonly" placeholder="Profit" />
-      <input name="remarks" placeholder="Remarks" value="${existing?.remarks || ''}" class="grid-span-2" />
+    
+    <div class="deal-type-selector">
+      <label>Transaction Type:</label>
+      <div class="type-buttons">
+        <button type="button" class="type-btn ${(existing?.type || 'SALE') === 'PURCHASE' ? 'active' : ''}" data-type="PURCHASE" onclick="this.parentElement.parentElement.dataset.selectedType = 'PURCHASE'; document.querySelector('input[name=type]').value = 'PURCHASE'; this.parentElement.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active')); this.classList.add('active');">
+          🔄 Purchase (Factory→Party)
+        </button>
+        <button type="button" class="type-btn ${(existing?.type || 'SALE') === 'SALE' ? 'active' : ''}" data-type="SALE" onclick="this.parentElement.parentElement.dataset.selectedType = 'SALE'; document.querySelector('input[name=type]').value = 'SALE'; this.parentElement.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active')); this.classList.add('active');">
+          💰 Sale (Party→Customer)
+        </button>
+      </div>
+      <input type="hidden" name="type" value="${existing?.type || 'SALE'}" />
     </div>
+
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="date">Date</label>
+        <input id="date" name="date" type="date" value="${existing?.date || todayISO()}" required />
+      </div>
+      <div class="form-group">
+        <label for="partyName">Party Name</label>
+        <input id="partyName" name="partyName" list="partyList" placeholder="Select or add party" value="${existing?.partyName || ''}" required />
+      </div>
+      <div class="form-group">
+        <label for="factoryName">Factory Name</label>
+        <input id="factoryName" name="factoryName" list="factoryList" placeholder="Select or add factory" value="${existing?.factoryName || ''}" required />
+      </div>
+      <div class="form-group">
+        <label for="grade">Grade</label>
+        <input id="grade" name="grade" list="gradeList" placeholder="W180, W210, W240, W320, JH, K, 1st SW, 2nd SW" value="${existing?.grade || ''}" required />
+      </div>
+      <div class="form-group">
+        <label for="bucket">Bucket (Units)</label>
+        <input id="bucket" name="bucket" type="number" step="0.01" min="0" placeholder="Bucket" value="${existing?.bucket ?? ''}" />
+      </div>
+      <div class="form-group">
+        <label for="kg">KG <span class="hint">(auto-calc: Bucket × ${settings.bucketToKg || BUCKET_TO_KG})</span></label>
+        <input id="kg" name="kg" type="number" step="0.001" min="0" placeholder="KG" value="${existing?.kg ?? ''}" />
+      </div>
+      <div class="form-group">
+        <label for="factoryRate">Factory Rate (₹/KG)</label>
+        <input id="factoryRate" name="factoryRate" type="number" step="0.01" min="0" placeholder="Factory Rate" value="${existing?.factoryRate ?? ''}" required />
+      </div>
+      <div class="form-group">
+        <label for="commissionPerKg">Commission (₹/KG)</label>
+        <input id="commissionPerKg" name="commissionPerKg" type="number" step="0.01" min="0" placeholder="Commission" value="${existing?.commissionPerKg ?? settings.defaultCommissionPerKg ?? DEFAULT_COMMISSION_PER_KG}" required />
+      </div>
+      <div class="form-group">
+        <label for="partyRate">Party Rate (₹/KG) <span class="hint">Auto-calculated</span></label>
+        <input id="partyRate" name="partyRate" type="number" step="0.01" readonly class="readonly" placeholder="Party Rate" value="${existing?.partyRate ?? ''}" />
+      </div>
+      <div class="form-group">
+        <label for="purchaseAmount">Purchase Amount <span class="hint">Auto-calculated</span></label>
+        <input id="purchaseAmount" name="purchaseAmount" readonly class="readonly" placeholder="Purchase Amount" />
+      </div>
+      <div class="form-group">
+        <label for="saleAmount">Sale Amount <span class="hint">Auto-calculated</span></label>
+        <input id="saleAmount" name="saleAmount" readonly class="readonly" placeholder="Sale Amount" />
+      </div>
+      <div class="form-group">
+        <label for="profit">Profit <span class="hint">Auto-calculated</span></label>
+        <input id="profit" name="profit" readonly class="readonly" placeholder="Profit" />
+      </div>
+      <div class="form-group full-width">
+        <label for="remarks">Remarks</label>
+        <input id="remarks" name="remarks" placeholder="Add optional notes" value="${existing?.remarks || ''}" />
+      </div>
+    </div>
+    
     <datalist id="partyList">${getAllParties().map((p) => `<option value="${p.name}">`).join('')}</datalist>
     <datalist id="factoryList">${getAllFactories().map((f) => `<option value="${f.name}">`).join('')}</datalist>
     <datalist id="gradeList">${getState().rates.map((r) => `<option value="${r.grade}">`).join('')}</datalist>
+    
     <div class="form-actions">
       <button type="submit" class="btn btn-primary" id="saveDeal">${existing ? 'Update Deal' : 'Save Deal'}</button>
       ${existing ? '' : '<button type="button" class="btn btn-secondary" id="resetDeal">Reset</button>'}
+      <button type="button" class="btn btn-secondary" id="cancelDeal" onclick="window.history.back()">Cancel</button>
     </div>
   `;
 
@@ -102,6 +159,7 @@ function buildDealForm(editId = null) {
         form.reset();
         form.date.value = todayISO();
         form.commissionPerKg.value = settings.defaultCommissionPerKg ?? DEFAULT_COMMISSION_PER_KG;
+        document.querySelector('input[name=type]').value = 'SALE';
       }
       navigate(ROUTES.recentDeals);
     } catch (err) {
@@ -113,6 +171,7 @@ function buildDealForm(editId = null) {
     form.reset();
     form.date.value = todayISO();
     form.commissionPerKg.value = settings.defaultCommissionPerKg ?? DEFAULT_COMMISSION_PER_KG;
+    document.querySelector('input[name=type]').value = 'SALE';
     applyCalc(form);
   });
 

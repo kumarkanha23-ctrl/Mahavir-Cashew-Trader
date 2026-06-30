@@ -8,6 +8,7 @@ import { findOrCreateFactory } from './factoryService.js';
 import { emit, Events } from '../../core/eventBus.js';
 
 function validateDealInput(input) {
+  if (!input.type || !['PURCHASE', 'SALE'].includes(input.type)) throw new Error('Transaction type is required.');
   if (!input.partyName?.trim()) throw new Error('Party name is required.');
   if (!input.factoryName?.trim()) throw new Error('Factory name is required.');
   if (!input.grade?.trim()) throw new Error('Grade is required.');
@@ -38,6 +39,7 @@ export function createDeal(input) {
   const deal = {
     id: generateId('deal'),
     dealNo: formatDealNo('deal', seq),
+    type: input.type || 'SALE',
     date: parseDateInput(input.date),
     partyId: party.id,
     partyName: party.name,
@@ -75,6 +77,7 @@ export function updateDeal(id, input) {
 
   const deal = {
     ...existing,
+    type: input.type || existing.type || 'SALE',
     date: parseDateInput(input.date),
     partyId: party.id,
     partyName: party.name,

@@ -1,14 +1,9 @@
 {
   "version": 2,
-  "public": true,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static"
-    }
-  ],
+  "public": ".",
   "routes": [
-    { "src": "/(.*)", "dest": "/index.html" }
+    { "src": "/(?!.*\\.)", "dest": "/index.html" },
+    { "src": "/(.*)", "dest": "/$1" }
   ],
   "headers": [
     {

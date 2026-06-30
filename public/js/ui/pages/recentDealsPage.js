@@ -25,6 +25,7 @@ function buildTable(deals) {
   const tbody = deals.length ? deals.map((d) => el('tr', {}, [
     el('td', { textContent: d.dealNo }),
     el('td', { textContent: formatDate(d.date) }),
+    el('td', { textContent: d.type === 'PURCHASE' ? '🔄 Purchase' : '💰 Sale' }),
     el('td', { textContent: d.partyName }),
     el('td', { textContent: d.factoryName }),
     el('td', { textContent: d.grade }),
@@ -57,7 +58,7 @@ function buildTable(deals) {
         })
       })
     ])
-  ])) : [el('tr', {}, [el('td', { colSpan: '15', textContent: 'No deals found.' })])];
+  ])) : [el('tr', {}, [el('td', { colSpan: '16', textContent: 'No deals found.' })])];
 
   const tableBox = el('div', { className: 'tableBox' }, [
     el('h2', { textContent: `Recent Deals (${deals.length})` }),
@@ -65,7 +66,7 @@ function buildTable(deals) {
       el('table', {}, [
         el('thead', {}, [
           el('tr', {}, [
-            'Deal No', 'Date', 'Party', 'Factory', 'Grade', 'Bucket', 'KG',
+            'Deal No', 'Date', 'Type', 'Party', 'Factory', 'Grade', 'Bucket', 'KG',
             'Factory Rate', 'Comm/KG', 'Party Rate', 'Purchase', 'Sale', 'Profit', 'Remarks', 'Actions'
           ].map((h) => el('th', { textContent: h })))
         ]),
