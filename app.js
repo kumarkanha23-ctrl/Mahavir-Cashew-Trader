@@ -3,7 +3,29 @@ import { renderRateMaster, renderNewDeal, renderRecentDeals } from './deals.js';
 import { renderPartyLedger, renderFactoryLedger } from './ledger.js';
 import { renderPartyPayment, renderFactoryPayment } from './payment.js';
 import { renderReports, renderSettings, renderBackup } from './reports.js';
-import { initFirebase } from './firebase.js';
+import {
+  initFirebase,
+  ensureFirebaseReady,
+  registerDataProvider,
+  migrateLocalStorageToFirestore,
+  saveAllToFirestore,
+  clearFirestoreData,
+  startFirestoreSync,
+  stopFirestoreSync,
+  syncToCloud,
+  isOnline,
+  DEFAULT_FIREBASE_CONFIG,
+  registerCloudImportHandler
+} from './firebase.js';
+import {
+  initAuth,
+  onAuthChange,
+  signOutUser,
+  showAuthScreen,
+  hideAuthScreen,
+  updateAuthHeader,
+  isAuthenticated
+} from './auth.js';
 
 export const APP_NAME = 'Mahavir Cashew Trader';
 export const BUCKET_TO_KG = 10;
@@ -22,6 +44,7 @@ export const KEYS = {
 };
 
 export const ROUTES = {
+  login: 'login',
   dashboard: 'dashboard',
   rateMaster: 'rate-master',
   newDeal: 'new-deal',
@@ -70,6 +93,11 @@ let state = {
   rates: [],
   sequences: { deal: 0, payment: 0 }
 };
+
+let dataReady = false;
+let firestoreUnsub = null;
+let persistTimer = null;
+let appInitialized = false;
 
 const listeners = new Set();
 
@@ -147,33 +175,78 @@ function lsSet(key, data) {
   localStorage.setItem(key, wrap(data));
 }
 
+function getFirestoreSnapshot() {
+  return {
+    meta: { schemaVersion: 2 },
+    settings: state.settings,
+    parties: state.parties,
+    factories: state.factories,
+    deals: state.deals,
+    payments: state.payments,
+    rates: state.rates,
+    sequences: state.sequences
+  };
+}
+
+function applyDocToState(docId, payload) {
+  if (payload === undefined) return;
+  switch (docId) {
+    case 'settings':
+      state.settings = { ...DEFAULT_SETTINGS, ...payload };
+      initFirebase(state.settings.firebaseConfig || DEFAULT_FIREBASE_CONFIG);
+      break;
+    case 'parties': state.parties = Array.isArray(payload) ? payload : []; break;
+    case 'factories': state.factories = Array.isArray(payload) ? payload : []; break;
+    case 'deals': state.deals = migrateDeals(Array.isArray(payload) ? payload : []); break;
+    case 'payments': state.payments = Array.isArray(payload) ? payload : []; break;
+    case 'rates': state.rates = Array.isArray(payload) ? payload : []; break;
+    case 'sequences': state.sequences = payload || { deal: 0, payment: 0 }; break;
+    case 'meta': break;
+    default: break;
+  }
+}
+
+function applyFirestoreData(data) {
+  if (data.settings !== undefined) applyDocToState('settings', data.settings);
+  if (data.parties !== undefined) applyDocToState('parties', data.parties);
+  if (data.factories !== undefined) applyDocToState('factories', data.factories);
+  if (data.deals !== undefined) applyDocToState('deals', data.deals);
+  if (data.payments !== undefined) applyDocToState('payments', data.payments);
+  if (data.rates !== undefined) applyDocToState('rates', data.rates);
+  if (data.sequences !== undefined) applyDocToState('sequences', data.sequences);
+}
+
 export function loadAll() {
   state.settings = { ...DEFAULT_SETTINGS, ...lsGet(KEYS.SETTINGS, DEFAULT_SETTINGS) };
   state.parties = lsGet(KEYS.PARTIES, []);
   state.factories = lsGet(KEYS.FACTORIES, []);
   const rawDeals = lsGet(KEYS.DEALS, []);
   state.deals = migrateDeals(rawDeals);
-  if (rawDeals.some((d) => !Array.isArray(d.grades) || !d.grades.length)) {
-    lsSet(KEYS.DEALS, state.deals);
-  }
   state.payments = lsGet(KEYS.PAYMENTS, []);
   state.rates = lsGet(KEYS.RATES, []);
   state.sequences = lsGet(KEYS.SEQUENCES, { deal: 0, payment: 0 });
-  if (!localStorage.getItem(KEYS.META)) lsSet(KEYS.META, { schemaVersion: 2 });
+}
+
+function readLocalStorageForMigration() {
+  loadAll();
+  return getFirestoreSnapshot();
 }
 
 export function persist() {
-  lsSet(KEYS.SETTINGS, state.settings);
-  lsSet(KEYS.PARTIES, state.parties);
-  lsSet(KEYS.FACTORIES, state.factories);
-  lsSet(KEYS.DEALS, state.deals);
-  lsSet(KEYS.PAYMENTS, state.payments);
-  lsSet(KEYS.RATES, state.rates);
-  lsSet(KEYS.SEQUENCES, state.sequences);
   notify();
-  if (state.settings.firebaseEnabled) {
-    import('./firebase.js').then((m) => m.syncToCloud().catch(() => {}));
-  }
+  if (!isAuthenticated() || !dataReady) return;
+
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(async () => {
+    try {
+      await saveAllToFirestore(getFirestoreSnapshot());
+      if (state.settings.firebaseEnabled) {
+        syncToCloud().catch(() => {});
+      }
+    } catch (err) {
+      console.warn('Firestore save failed:', err.message);
+    }
+  }, 400);
 }
 
 export function formatFileSize(bytes) {
@@ -282,21 +355,38 @@ export function readBackupPreview(file) {
 export function importBackupData(parsed) {
   const data = parsed.data || parsed;
   Object.entries(data).forEach(([k, v]) => {
-    if (k.startsWith('mct:') && k !== KEYS.LAST_BACKUP) {
-      localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
+    if (!k.startsWith('mct:') || k === KEYS.LAST_BACKUP) return;
+    try {
+      const text = typeof v === 'string' ? v : JSON.stringify(v);
+      const parsedVal = JSON.parse(text);
+      const payload = parsedVal?.payload ?? parsedVal;
+      if (k === KEYS.SETTINGS) state.settings = { ...DEFAULT_SETTINGS, ...payload };
+      else if (k === KEYS.PARTIES) state.parties = Array.isArray(payload) ? payload : [];
+      else if (k === KEYS.FACTORIES) state.factories = Array.isArray(payload) ? payload : [];
+      else if (k === KEYS.DEALS) state.deals = migrateDeals(Array.isArray(payload) ? payload : []);
+      else if (k === KEYS.PAYMENTS) state.payments = Array.isArray(payload) ? payload : [];
+      else if (k === KEYS.RATES) state.rates = Array.isArray(payload) ? payload : [];
+      else if (k === KEYS.SEQUENCES) state.sequences = payload || { deal: 0, payment: 0 };
+    } catch {
+      /* skip invalid entries */
     }
   });
-  loadAll();
   notify();
+  saveAllToFirestore(getFirestoreSnapshot()).catch((err) => {
+    console.warn('Backup restore sync failed:', err.message);
+  });
 }
 
 export function exportBackupFile() {
   const data = {};
-  Object.values(KEYS).forEach((k) => {
-    if (k === KEYS.LAST_BACKUP) return;
-    const raw = localStorage.getItem(k);
-    if (raw) data[k] = raw;
-  });
+  data[KEYS.META] = wrap({ schemaVersion: 2 });
+  data[KEYS.SETTINGS] = wrap(state.settings);
+  data[KEYS.PARTIES] = wrap(state.parties);
+  data[KEYS.FACTORIES] = wrap(state.factories);
+  data[KEYS.DEALS] = wrap(state.deals);
+  data[KEYS.PAYMENTS] = wrap(state.payments);
+  data[KEYS.RATES] = wrap(state.rates);
+  data[KEYS.SEQUENCES] = wrap(state.sequences);
   const payload = JSON.stringify({ app: APP_NAME, exportedAt: new Date().toISOString(), data }, null, 2);
   const blob = new Blob([payload], { type: 'application/json' });
   saveLastBackupInfo(blob.size);
@@ -351,9 +441,6 @@ export function showBackupPreviewModal(preview, onConfirm) {
 }
 
 export function clearAllData() {
-  Object.values(KEYS).forEach((k) => {
-    if (k !== KEYS.LAST_BACKUP) localStorage.removeItem(k);
-  });
   state = {
     settings: { ...DEFAULT_SETTINGS },
     parties: [],
@@ -363,7 +450,7 @@ export function clearAllData() {
     rates: [],
     sequences: { deal: 0, payment: 0 }
   };
-  lsSet(KEYS.META, { schemaVersion: 1 });
+  clearFirestoreData().then(() => persist());
   notify();
 }
 
@@ -726,9 +813,8 @@ export function filterDeals(f = {}) {
 
 export function updateSettings(data) {
   state.settings = { ...state.settings, ...data };
-  lsSet(KEYS.SETTINGS, state.settings);
-  initFirebase(state.settings.firebaseConfig);
-  notify();
+  initFirebase(state.settings.firebaseConfig || DEFAULT_FIREBASE_CONFIG);
+  persist();
 }
 
 export function updateParty(id, data) {
@@ -802,10 +888,25 @@ const TITLES = {
   [ROUTES.backup]: 'Backup & Restore'
 };
 
+function updateSyncBadge() {
+  const badge = document.getElementById('syncBadge');
+  if (!badge) return;
+  if (!isOnline()) {
+    badge.textContent = 'Offline';
+    badge.className = 'header-badge header-badge-offline';
+  } else {
+    badge.textContent = 'Synced';
+    badge.className = 'header-badge header-badge-synced';
+  }
+}
+
 function render() {
+  if (!isAuthenticated()) return;
+
   const el = document.getElementById('mainContent');
   document.getElementById('pageHeading').textContent = routeParams.id ? 'Edit Deal' : (TITLES[currentRoute] || APP_NAME);
   renderNav();
+  updateSyncBadge();
   document.body.classList.remove('sidebar-open');
 
   switch (currentRoute) {
@@ -824,21 +925,124 @@ function render() {
   }
 }
 
-function bootstrap() {
-  loadAll();
-  initFirebase(state.settings.firebaseConfig);
-  subscribe(render);
-  document.getElementById('menuToggle').addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
-  window.addEventListener('hashchange', () => {
-    const { route, params } = parseHash();
-    currentRoute = route;
-    routeParams = params;
-    render();
-  });
-  const { route, params } = parseHash();
-  currentRoute = route;
-  routeParams = params;
+function hideLoading() {
+  document.getElementById('appLoading')?.classList.add('hidden');
+}
+
+function showLoading() {
+  document.getElementById('appLoading')?.classList.remove('hidden');
+}
+
+async function startAppForUser() {
+  hideAuthScreen();
+  updateAuthHeader();
+
+  if (!appInitialized) {
+    registerDataProvider(() => getFirestoreSnapshot());
+    initFirebase(state.settings.firebaseConfig || DEFAULT_FIREBASE_CONFIG);
+
+    const migrated = await migrateLocalStorageToFirestore(readLocalStorageForMigration);
+    if (migrated) {
+      toast('Local data migrated to Firestore.');
+    }
+
+    let readyCalled = false;
+    firestoreUnsub = startFirestoreSync({
+      onDocUpdate: (docId, payload) => {
+        applyDocToState(docId, payload);
+        if (dataReady) notify();
+      },
+      onReady: (data) => {
+        applyFirestoreData(data);
+        dataReady = true;
+
+        if (Object.values(data).every((v) => v === undefined)) {
+          saveAllToFirestore(getFirestoreSnapshot()).catch(() => {});
+        }
+
+        if (!readyCalled) {
+          readyCalled = true;
+          if (!appInitialized) {
+            appInitialized = true;
+            subscribe(render);
+            document.getElementById('menuToggle')?.addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
+            document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+              confirmAction('Sign out of Mahavir Cashew Trader?', async () => {
+                await signOutUser();
+              });
+            });
+            window.addEventListener('hashchange', () => {
+              if (!isAuthenticated()) return;
+              const { route, params } = parseHash();
+              if (route === ROUTES.login) {
+                navigate(ROUTES.dashboard);
+                return;
+              }
+              currentRoute = route;
+              routeParams = params;
+              render();
+            });
+          }
+          const { route, params } = parseHash();
+          currentRoute = route === ROUTES.login ? ROUTES.dashboard : route;
+          routeParams = params;
+          if (route === ROUTES.login) navigate(ROUTES.dashboard);
+          render();
+          hideLoading();
+        }
+        notify();
+      },
+      onError: (err) => {
+        hideLoading();
+        toast('Firestore sync error: ' + err.message, 'error');
+      },
+      onOffline: () => {
+        updateSyncBadge();
+        toast('You are offline. Changes will sync when back online.', 'warn');
+      },
+      onOnline: () => {
+        updateSyncBadge();
+        toast('Back online. Syncing data…');
+      }
+    });
+
+    return;
+  }
+
+  hideLoading();
   render();
+}
+
+function stopAppForUser() {
+  dataReady = false;
+  appInitialized = false;
+  if (firestoreUnsub) {
+    firestoreUnsub();
+    firestoreUnsub = null;
+  }
+  stopFirestoreSync();
+  showAuthScreen();
+  hideLoading();
+}
+
+async function bootstrap() {
+  showLoading();
+  await ensureFirebaseReady();
+  initFirebase(DEFAULT_FIREBASE_CONFIG);
+  registerDataProvider(() => getFirestoreSnapshot());
+  registerCloudImportHandler((data) => {
+    importBackupData({ data });
+  });
+
+  await initAuth();
+
+  onAuthChange(async (user) => {
+    if (!user) {
+      stopAppForUser();
+      return;
+    }
+    await startAppForUser();
+  });
 }
 
 bootstrap();

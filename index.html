@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Mahavir Cashew Trader - Offline ERP for cashew trading" />
+  <meta name="description" content="Mahavir Cashew Trader - ERP for cashew trading with Firebase sync" />
   <title>Mahavir Cashew Trader</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -11,7 +11,16 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="app-shell">
+  <div id="appLoading" class="app-loading">
+    <div class="app-loading-inner">
+      <span class="brand-icon">🥜</span>
+      <p>Loading Mahavir Cashew Trader…</p>
+    </div>
+  </div>
+
+  <div id="authScreen" class="auth-screen hidden"></div>
+
+  <div class="app-shell hidden" id="appShell">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
         <span class="brand-icon">🥜</span>
@@ -29,12 +38,14 @@
           <h1 class="page-heading" id="pageHeading">Dashboard</h1>
         </div>
         <div class="header-right">
-          <span class="header-badge">Offline ERP v1</span>
+          <span class="header-badge header-badge-synced" id="syncBadge">Synced</span>
+          <span class="header-user" id="userEmail"></span>
+          <button type="button" class="btn btn-secondary btn-logout" id="logoutBtn">Logout</button>
         </div>
       </header>
       <main id="mainContent" class="main-content"></main>
       <footer class="app-footer">
-        <p>Mahavir Cashew Trader &copy; 2026 — Data stored locally on this device</p>
+        <p>Mahavir Cashew Trader &copy; 2026 — Data synced via Firebase Firestore</p>
       </footer>
     </div>
   </div>

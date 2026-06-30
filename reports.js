@@ -166,7 +166,7 @@ export function renderSettings(container) {
         <label class="span-full">Firebase Config (JSON)<textarea name="firebaseConfigJson" rows="3" placeholder='{"apiKey":"...","authDomain":"...","databaseURL":"...","projectId":"..."}'>${s.firebaseConfig ? esc(JSON.stringify(s.firebaseConfig)) : ''}</textarea></label>
         <button type="submit" class="btn btn-primary">Save Settings</button>
       </form>
-      <p class="hint">Bucket × ${s.bucketToKg || BUCKET_TO_KG} = KG | Firebase is optional — app works fully offline.</p>
+      <p class="hint">Bucket × ${s.bucketToKg || BUCKET_TO_KG} = KG | Data syncs in real time via Firestore. Optional RTDB cloud backup above.</p>
     </section>
     ${renderEntityTable('Parties', parties, 'party')}
     ${renderEntityTable('Factories', factories, 'factory')}`;
