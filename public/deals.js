@@ -218,10 +218,25 @@ export function renderNewDeal(container, editId = null) {
   const factories = getState().factories.map((f) => `<option value="${esc(f.name)}">`).join('');
   const grades = getState().rates.map((r) => `<option value="${esc(r.grade)}">`).join('');
   const initialRows = d ? getDealGrades(d).map((g) => defaultGradeRow(s, g)) : [defaultGradeRow(s)];
+  const dealType = d?.type || 'SALE';
 
   container.innerHTML = `
     <section class="dealBox">
       <h2>${d ? 'Edit Deal' : 'New Deal'}</h2>
+      
+      <div class="deal-type-selector">
+        <label>Transaction Type:</label>
+        <div class="type-buttons">
+          <button type="button" class="type-btn ${dealType === 'PURCHASE' ? 'active' : ''}" data-type="PURCHASE" onclick="document.querySelector('input[name=dealType]').value = 'PURCHASE'; this.parentElement.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active')); this.classList.add('active');">
+            🔄 Purchase (Factory→Party)
+          </button>
+          <button type="button" class="type-btn ${dealType === 'SALE' ? 'active' : ''}" data-type="SALE" onclick="document.querySelector('input[name=dealType]').value = 'SALE'; this.parentElement.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active')); this.classList.add('active');">
+            💰 Sale (Party→Customer)
+          </button>
+        </div>
+        <input type="hidden" name="dealType" value="${dealType}" />
+      </div>
+      
       <form id="dealForm">
         <div class="deal-header grid grid-4">
           ${d ? `<label>Deal No<input type="text" readonly class="readonly" value="${esc(d.dealNo)}" /></label>` : ''}
@@ -266,6 +281,7 @@ export function renderNewDeal(container, editId = null) {
           <div class="form-actions">
             <button type="submit" class="btn btn-primary">${d ? 'Update Deal' : 'Save Deal'}</button>
             ${d ? '' : '<button type="button" class="btn btn-secondary" id="resetDeal">Reset</button>'}
+            <button type="button" class="btn btn-secondary" id="cancelDeal" onclick="window.history.back()">Cancel</button>
           </div>
         </div>
 
@@ -279,11 +295,14 @@ export function renderNewDeal(container, editId = null) {
   bindGradeTable(container, s);
 
   const form = container.querySelector('#dealForm');
+  const dealTypeInput = container.querySelector('input[name=dealType]');
+  
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     try {
       const fd = new FormData(form);
       saveDeal({
+        type: dealTypeInput.value || 'SALE',
         date: fd.get('date'),
         partyName: fd.get('partyName'),
         factoryName: fd.get('factoryName'),
