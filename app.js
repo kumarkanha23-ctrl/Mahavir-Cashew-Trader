@@ -98,6 +98,7 @@ let dataReady = false;
 let firestoreUnsub = null;
 let persistTimer = null;
 let appInitialized = false;
+let appReadyTimer = null;
 
 const listeners = new Set();
 
@@ -933,67 +934,101 @@ function showLoading() {
   document.getElementById('appLoading')?.classList.remove('hidden');
 }
 
+function finalizeAppBootstrap() {
+  if (!appInitialized) {
+    appInitialized = true;
+    subscribe(render);
+    document.getElementById('menuToggle')?.addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
+    document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+      confirmAction('Sign out of Mahavir Cashew Trader?', async () => {
+        await signOutUser();
+      });
+    });
+    window.addEventListener('hashchange', () => {
+      if (!isAuthenticated()) return;
+      const { route, params } = parseHash();
+      if (route === ROUTES.login) {
+        navigate(ROUTES.dashboard);
+        return;
+      }
+      currentRoute = route;
+      routeParams = params;
+      render();
+    });
+  }
+
+  const { route, params } = parseHash();
+  currentRoute = route === ROUTES.login ? ROUTES.dashboard : route;
+  routeParams = params;
+  if (route === ROUTES.login) navigate(ROUTES.dashboard);
+  render();
+  hideLoading();
+}
+
 async function startAppForUser() {
   hideAuthScreen();
   updateAuthHeader();
 
   if (!appInitialized) {
     registerDataProvider(() => getFirestoreSnapshot());
-    initFirebase(state.settings.firebaseConfig || DEFAULT_FIREBASE_CONFIG);
 
-    const migrated = await migrateLocalStorageToFirestore(readLocalStorageForMigration);
-    if (migrated) {
-      toast('Local data migrated to Firestore.');
+    try {
+      await initFirebase(state.settings.firebaseConfig || DEFAULT_FIREBASE_CONFIG);
+    } catch (err) {
+      console.warn('Firebase init skipped during app bootstrap:', err.message);
+    }
+
+    try {
+      const migrated = await migrateLocalStorageToFirestore(readLocalStorageForMigration);
+      if (migrated) {
+        toast('Local data migrated to Firestore.');
+      }
+    } catch (err) {
+      console.warn('Firestore migration skipped:', err.message);
     }
 
     let readyCalled = false;
+    const markReady = (data = null) => {
+      if (readyCalled) return;
+      readyCalled = true;
+      if (data) {
+        applyFirestoreData(data);
+        dataReady = true;
+      }
+      finalizeAppBootstrap();
+      notify();
+    };
+
+    if (appReadyTimer) clearTimeout(appReadyTimer);
+    appReadyTimer = setTimeout(() => {
+      if (!readyCalled) {
+        dataReady = true;
+        markReady();
+      }
+    }, 1800);
+
     firestoreUnsub = startFirestoreSync({
       onDocUpdate: (docId, payload) => {
         applyDocToState(docId, payload);
         if (dataReady) notify();
       },
       onReady: (data) => {
-        applyFirestoreData(data);
-        dataReady = true;
-
+        if (appReadyTimer) {
+          clearTimeout(appReadyTimer);
+          appReadyTimer = null;
+        }
         if (Object.values(data).every((v) => v === undefined)) {
           saveAllToFirestore(getFirestoreSnapshot()).catch(() => {});
         }
-
-        if (!readyCalled) {
-          readyCalled = true;
-          if (!appInitialized) {
-            appInitialized = true;
-            subscribe(render);
-            document.getElementById('menuToggle')?.addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
-            document.getElementById('logoutBtn')?.addEventListener('click', async () => {
-              confirmAction('Sign out of Mahavir Cashew Trader?', async () => {
-                await signOutUser();
-              });
-            });
-            window.addEventListener('hashchange', () => {
-              if (!isAuthenticated()) return;
-              const { route, params } = parseHash();
-              if (route === ROUTES.login) {
-                navigate(ROUTES.dashboard);
-                return;
-              }
-              currentRoute = route;
-              routeParams = params;
-              render();
-            });
-          }
-          const { route, params } = parseHash();
-          currentRoute = route === ROUTES.login ? ROUTES.dashboard : route;
-          routeParams = params;
-          if (route === ROUTES.login) navigate(ROUTES.dashboard);
-          render();
-          hideLoading();
-        }
-        notify();
+        markReady(data);
       },
       onError: (err) => {
-        hideLoading();
+        if (appReadyTimer) {
+          clearTimeout(appReadyTimer);
+          appReadyTimer = null;
+        }
+        dataReady = true;
+        markReady();
         toast('Firestore sync error: ' + err.message, 'error');
       },
       onOffline: () => {
@@ -1016,6 +1051,10 @@ async function startAppForUser() {
 function stopAppForUser() {
   dataReady = false;
   appInitialized = false;
+  if (appReadyTimer) {
+    clearTimeout(appReadyTimer);
+    appReadyTimer = null;
+  }
   if (firestoreUnsub) {
     firestoreUnsub();
     firestoreUnsub = null;
@@ -1028,14 +1067,18 @@ function stopAppForUser() {
 
 async function bootstrap() {
   showLoading();
-  await ensureFirebaseReady();
-  initFirebase(DEFAULT_FIREBASE_CONFIG);
-  registerDataProvider(() => getFirestoreSnapshot());
-  registerCloudImportHandler((data) => {
-    importBackupData({ data });
-  });
+  try {
+    await ensureFirebaseReady();
+    await initFirebase(DEFAULT_FIREBASE_CONFIG);
+    registerDataProvider(() => getFirestoreSnapshot());
+    registerCloudImportHandler((data) => {
+      importBackupData({ data });
+    });
 
-  await initAuth();
+    await initAuth();
+  } catch (err) {
+    console.warn('Bootstrap warning:', err.message);
+  }
 
   onAuthChange(async (user) => {
     if (!user) {

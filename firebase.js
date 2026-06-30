@@ -2,6 +2,7 @@
 export const DEFAULT_FIREBASE_CONFIG = {
   apiKey: 'AIzaSyAWiGtIeDHA-Oi0YzMbiw5tQHAXlPC84Xc',
   authDomain: 'mahavir-cashew-trader.firebaseapp.com',
+  databaseURL: 'https://mahavir-cashew-trader-default-rtdb.firebaseio.com',
   projectId: 'mahavir-cashew-trader',
   storageBucket: 'mahavir-cashew-trader.firebasestorage.app',
   messagingSenderId: '480689356965',
@@ -44,6 +45,7 @@ let authReady = false;
 let persistenceEnabled = false;
 let lastConfig = null;
 let sdkLoadPromise = null;
+let initPromise = null;
 
 let dataProvider = null;
 let cloudImportHandler = null;
@@ -61,7 +63,7 @@ function resolveConfig(config) {
 
 /** Realtime Database cloud backup (existing feature — unchanged). */
 export function isFirebaseReady() {
-  return ready && !!database;
+  return (ready && !!database) || (firestoreReady && !!firestore);
 }
 
 /** Firestore connection status. */
@@ -116,59 +118,67 @@ export function initFirebase(config) {
   if (config !== undefined) lastConfig = config;
 
   const effectiveConfig = resolveConfig(lastConfig);
-  ready = false;
-  firestoreReady = false;
-  authReady = false;
-  database = null;
-  firestore = null;
-  auth = null;
+  if (!effectiveConfig?.apiKey) return Promise.resolve(false);
+  if (initPromise) return initPromise;
 
-  if (!effectiveConfig?.apiKey) return;
+  initPromise = (async () => {
+    try {
+      if (typeof firebase === 'undefined') {
+        await loadFirebaseSdk();
+      }
 
-  try {
-    if (typeof firebase === 'undefined') {
-      console.warn('Firebase SDK not loaded. Cloud services will init when SDK is ready.');
-      return;
+      if (!firebase.apps.length) {
+        firebaseApp = firebase.initializeApp(effectiveConfig);
+      } else {
+        firebaseApp = firebase.app();
+      }
+
+      ready = false;
+      firestoreReady = false;
+      authReady = false;
+      database = null;
+      firestore = null;
+      auth = null;
+
+      if (firebase.firestore) {
+        firestore = firebase.firestore();
+        firestoreReady = true;
+        await enableOfflinePersistence();
+      }
+
+      if (firebase.auth) {
+        auth = firebase.auth();
+        authReady = true;
+      }
+
+      if (effectiveConfig.databaseURL && firebase.database) {
+        database = firebase.database();
+        ready = true;
+      }
+
+      return true;
+    } catch (err) {
+      console.warn('Firebase init failed:', err.message);
+      initPromise = null;
+      return false;
     }
+  })();
 
-    if (!firebase.apps.length) {
-      firebaseApp = firebase.initializeApp(effectiveConfig);
-    } else {
-      firebaseApp = firebase.app();
-    }
-
-    if (firebase.firestore) {
-      firestore = firebase.firestore();
-      firestoreReady = true;
-      enableOfflinePersistence();
-    }
-
-    if (firebase.auth) {
-      auth = firebase.auth();
-      authReady = true;
-    }
-
-    /* Existing Realtime Database cloud backup — only when databaseURL is configured. */
-    if (effectiveConfig.databaseURL && firebase.database) {
-      database = firebase.database();
-      ready = true;
-    }
-  } catch (err) {
-    console.warn('Firebase init failed:', err.message);
-  }
+  return initPromise;
 }
 
-function enableOfflinePersistence() {
+async function enableOfflinePersistence() {
   if (!firestore || persistenceEnabled) return;
-  firestore.enablePersistence({ synchronizeTabs: true })
-    .then(() => { persistenceEnabled = true; })
-    .catch((err) => {
-      if (err.code === 'failed-precondition') {
-        console.warn('Firestore persistence unavailable (multiple tabs open).');
-      } else if (err.code === 'unimplemented') {
-        console.warn('Firestore persistence not supported in this browser.');
-      }
-    });
+  try {
+    await firestore.enablePersistence({ synchronizeTabs: true });
+    persistenceEnabled = true;
+  } catch (err) {
+    if (err.code === 'failed-precondition') {
+      console.warn('Firestore persistence unavailable (multiple tabs open).');
+    } else if (err.code === 'unimplemented') {
+      console.warn('Firestore persistence not supported in this browser.');
+    }
+  }
 }
 
 function erpRef(docId) {
@@ -199,13 +209,25 @@ export async function syncToCloud() {
     exportedAt: new Date().toISOString(),
     data: collectWrappedData()
   };
-  await database.ref(CLOUD_PATH).set(payload);
+  if (database) {
+    await database.ref(CLOUD_PATH).set(payload);
+    return;
+  }
+  if (firestore) {
+    await erpRef('__cloudBackup').set(wrapPayload(payload));
+  }
 }
 
 export async function syncFromCloud() {
   if (!isFirebaseReady()) throw new Error('Firebase is not configured.');
-  const snap = await database.ref(CLOUD_PATH).once('value');
-  const payload = snap.val();
+  let payload = null;
+  if (database) {
+    const snap = await database.ref(CLOUD_PATH).once('value');
+    payload = snap.val();
+  } else if (firestore) {
+    const snap = await erpRef('__cloudBackup').get();
+    payload = snap.exists ? unwrapPayload(snap.data()) : null;
+  }
   if (!payload || !payload.data) throw new Error('No cloud data found.');
 
   if (cloudImportHandler) {
@@ -372,6 +394,11 @@ export function stopFirestoreSync() {
 export function loadFirebaseSdk() {
   if (sdkLoadPromise) return sdkLoadPromise;
 
+  if (typeof document === 'undefined') {
+    sdkLoadPromise = Promise.resolve(false);
+    return sdkLoadPromise;
+  }
+
   sdkLoadPromise = Promise.all(SDK_MODULES.map((src, i) => new Promise((resolve, reject) => {
     const id = `firebase-sdk-${i}`;
     if (document.getElementById(id)) {
@@ -385,9 +412,16 @@ export function loadFirebaseSdk() {
     script.onerror = () => reject(new Error(`Failed to load Firebase SDK: ${src}`));
     document.head.appendChild(script);
   })))
-    .then(() => initFirebase(lastConfig))
+    .then(() => {
+      if (typeof firebase === 'undefined') {
+        throw new Error('Firebase SDK did not initialize.');
+      }
+      return true;
+    })
     .catch((err) => {
       console.warn('Firebase SDK load failed:', err.message);
+      sdkLoadPromise = null;
+      return false;
     });
 
   return sdkLoadPromise;
@@ -395,7 +429,9 @@ export function loadFirebaseSdk() {
 
 /** Await SDK load + initialization. */
 export function ensureFirebaseReady() {
-  return loadFirebaseSdk();
+  return initFirebase(lastConfig);
 }
 
-loadFirebaseSdk();
+if (typeof document !== 'undefined') {
+  loadFirebaseSdk();
+}

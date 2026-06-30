@@ -7,6 +7,7 @@ import {
 let currentUser = null;
 const authListeners = new Set();
 let authScreenEl = null;
+let authInitPromise = null;
 
 function esc(s) {
   const d = document.createElement('div');
@@ -39,7 +40,7 @@ export function isAuthenticated() {
 
 export function onAuthChange(fn) {
   authListeners.add(fn);
-  if (currentUser !== null || authReady) fn(currentUser);
+  fn(currentUser);
   return () => authListeners.delete(fn);
 }
 
@@ -70,17 +71,28 @@ export async function signOutUser() {
 }
 
 export async function initAuth() {
-  await ensureFirebaseReady();
-  if (!isAuthReady()) {
-    authReady = true;
-    notifyAuth(null);
-    return;
-  }
+  if (authInitPromise) return authInitPromise;
 
-  getAuth().onAuthStateChanged((user) => {
+  authInitPromise = (async () => {
+    await ensureFirebaseReady();
+    if (!isAuthReady()) {
+      authReady = true;
+      notifyAuth(null);
+      return;
+    }
+
+    const authInstance = getAuth();
+    if (typeof authInstance?.authStateReady === 'function') {
+      await authInstance.authStateReady();
+    }
     authReady = true;
-    notifyAuth(user);
-  });
+    notifyAuth(authInstance?.currentUser ?? null);
+    authInstance?.onAuthStateChanged((user) => {
+      notifyAuth(user);
+    });
+  })();
+
+  return authInitPromise;
 }
 
 function setAuthMode(mode) {
