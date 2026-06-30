@@ -1021,6 +1021,7 @@ function stopAppForUser() {
     firestoreUnsub = null;
   }
   stopFirestoreSync();
+  updateAuthHeader();
   showAuthScreen();
   hideLoading();
 }
