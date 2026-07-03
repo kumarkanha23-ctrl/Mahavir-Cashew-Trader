@@ -69,8 +69,18 @@ function buildPdfWindow(title, htmlContent, options = {}) {
       if (downloadBtn) {
         downloadBtn.addEventListener('click', () => window.print());
       // If options.pdf is true, try to generate a real PDF blob and open that in a new tab.
-      if (options.pdf && typeof window.html2pdf !== 'undefined') {
+      if (options.pdf) {
         try {
+          // Ensure html2pdf is available; if not, load it dynamically.
+          if (typeof window.html2pdf === 'undefined') {
+            await new Promise((resolve, reject) => {
+              const s = document.createElement('script');
+              s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js';
+              s.onload = resolve;
+              s.onerror = () => reject(new Error('Failed to load html2pdf script'));
+              document.head.appendChild(s);
+            }).catch(() => {});
+          }
           const container = document.createElement('div');
           container.style.position = 'fixed'; container.style.left = '-9999px';
           container.innerHTML = htmlContent;
@@ -82,6 +92,7 @@ function buildPdfWindow(title, htmlContent, options = {}) {
             html2canvas: { scale: 2 },
           };
           // html2pdf returns a Promise when using output('blob') after toPdf()
+          if (typeof html2pdf === 'undefined') throw new Error('html2pdf unavailable');
           html2pdf().from(container).set(opt).toPdf().output('blob').then((blob) => {
             try {
               const url = URL.createObjectURL(blob);
