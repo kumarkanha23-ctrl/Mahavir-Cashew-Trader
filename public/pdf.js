@@ -68,20 +68,55 @@ function buildPdfWindow(title, htmlContent, options = {}) {
       const shareBtn = document.getElementById('sharePdfBtn');
       if (downloadBtn) {
         downloadBtn.addEventListener('click', () => window.print());
+      // If options.pdf is true, try to generate a real PDF blob and open that in a new tab.
+      if (options.pdf && typeof window.html2pdf !== 'undefined') {
+        try {
+          const container = document.createElement('div');
+          container.style.position = 'fixed'; container.style.left = '-9999px';
+          container.innerHTML = htmlContent;
+          document.body.appendChild(container);
+          const opt = {
+            margin: 10,
+            filename: (options.fileName || `${windowName || 'document'}.pdf`),
+            jsPDF: { unit: 'pt', format: 'a4' },
+            html2canvas: { scale: 2 },
+          };
+          html2pdf().from(container).set(opt).toPdf().output('blob').then((blob) => {
+            try {
+              const url = URL.createObjectURL(blob);
+              window.open(url, windowName || '_blank', 'noopener');
+              setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 60 * 1000);
+            } finally {
+              try { document.body.removeChild(container); } catch (e) {}
+            }
+          }).catch((e) => {
+            try { document.body.removeChild(container); } catch (er) {}
+            const blob = new Blob([documentHtml], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const win = window.open(url, windowName || '_blank', 'noopener');
+            setTimeout(() => { try { URL.revokeObjectURL(url); } catch (err) {} }, 60 * 1000);
+            return win;
+          });
+          return null;
+        } catch (err) {
+          // fall through to HTML preview fallback
+        }
       }
-      if (shareBtn) {
-        shareBtn.addEventListener('click', async () => {
-          const text = ${JSON.stringify(shareText)};
-          if (navigator.share) {
-            try { await navigator.share({ title: ${JSON.stringify(title)}, text }); return; } catch {}
-          }
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            try { await navigator.clipboard.writeText(text); alert('Invoice details copied to clipboard.'); return; } catch {}
-          }
-          alert('Sharing is not available in this browser.');
-        });
+
+      try {
+        const blob = new Blob([documentHtml], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const win = window.open(url, windowName || '_blank', 'noopener');
+        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 60 * 1000);
+        return win;
+      } catch (err) {
+        const win = window.open('', windowName || '_blank');
+        if (win) {
+          try { win.document.write(documentHtml); win.document.close(); win.focus(); } catch (e) {}
+          if (autoPrint) { try { setTimeout(() => win.print(), 350); } catch (e) {} }
+          return win;
+        }
       }
-      ${autoPrint ? `window.addEventListener('load', function(){ setTimeout(function(){ try{ window.print(); }catch(e){} }, 350); });` : ''}
     </script>
   </body></html>`;
 
@@ -617,5 +652,5 @@ export function printInvoicePdf(dealId, templateName = 'party') {
       <div>Generated for ${escapeHtml(settings.companyName || APP_NAME)} on ${escapeHtml(new Date().toLocaleString('en-IN'))}</div>
     </div>`;
 
-  buildPdfWindow(`${headerTitle} - ${invoiceNo}`, html, { autoPrint: true, showActions: true, shareText });
+  buildPdfWindow(`${headerTitle} - ${invoiceNo}`, html, { autoPrint: true, showActions: true, shareText, pdf: true, fileName: `${template}-${invoiceNo}.pdf` });
 }
