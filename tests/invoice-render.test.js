@@ -26,6 +26,9 @@ function test() {
   expectContains(source, 'Signature Area');
   expectContains(source, 'Download PDF');
   expectContains(source, 'Print PDF');
+  expectContains(source, 'waitForPdfRender');
+  expectContains(source, 'document.fonts.ready');
+  expectContains(source, 'document.body.appendChild(wrapper)');
   expectContains(appSource, "pdfCenter: 'pdf-center'");
   expectContains(appSource, "label: 'PDF Center'");
   expectNotContains(dealsSource, 'Party PDF');

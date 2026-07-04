@@ -81,27 +81,58 @@ function ensureHtml2Pdf() {
   });
 }
 
+async function waitForPdfRender(container) {
+  if (typeof window === 'undefined' || !container) {
+    return;
+  }
+  await new Promise((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
+  if (document.fonts && typeof document.fonts.ready?.then === 'function') {
+    try {
+      await document.fonts.ready;
+    } catch (err) {
+      console.warn('Font wait failed:', err);
+    }
+  }
+  await new Promise((resolve) => setTimeout(resolve, 150));
+}
+
 async function createPdfBlobFromHtml(htmlContent, options = {}) {
   const fileName = sanitizeFileName(options.fileName || 'document.pdf');
   const wrapper = document.createElement('div');
   wrapper.style.position = 'fixed';
-  wrapper.style.left = '-9999px';
+  wrapper.style.left = '0';
   wrapper.style.top = '0';
   wrapper.style.width = '210mm';
-  wrapper.innerHTML = `<style>${PRINT_STYLE}</style><div class="pdf-shell"><div class="pdf-page">${htmlContent}</div></div>`;
+  wrapper.style.minHeight = '297mm';
+  wrapper.style.padding = '24px';
+  wrapper.style.background = '#fff';
+  wrapper.style.zIndex = '2147483647';
+  wrapper.style.visibility = 'visible';
+  wrapper.style.opacity = '1';
+  wrapper.style.overflow = 'visible';
+  wrapper.style.display = 'block';
+
+  const printable = document.createElement('div');
+  printable.style.width = '210mm';
+  printable.style.maxWidth = '210mm';
+  printable.style.margin = '0 auto';
+  printable.style.background = '#fff';
+  printable.innerHTML = `<style>${PRINT_STYLE}</style><div class="pdf-shell"><div class="pdf-page">${htmlContent}</div></div>`;
+  wrapper.appendChild(printable);
   document.body.appendChild(wrapper);
   try {
     await ensureHtml2Pdf();
+    await waitForPdfRender(printable);
     const opt = {
       margin: [12, 12, 12, 12],
       filename: fileName,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+      html2canvas: { scale: 2, useCORS: true, letterRendering: true, logging: false },
       jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
     };
     const pdf = await new Promise((resolve, reject) => {
-      window.html2pdf().set(opt).from(wrapper).toPdf().output('blob').then(resolve).catch(reject);
+      window.html2pdf().set(opt).from(printable).toPdf().output('blob').then(resolve).catch(reject);
     });
     return pdf;
   } finally {
