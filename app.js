@@ -3,6 +3,7 @@ import { renderRateMaster, renderNewDeal, renderRecentDeals } from './deals.js';
 import { renderPartyLedger, renderFactoryLedger } from './ledger.js';
 import { renderPartyPayment, renderFactoryPayment } from './payment.js';
 import { renderReports, renderSettings, renderBackup } from './reports.js';
+import { renderPdfCenter } from './pdf.js';
 import {
   initFirebase,
   ensureFirebaseReady,
@@ -40,7 +41,26 @@ export const KEYS = {
   PAYMENTS: 'mct:payments',
   RATES: 'mct:rates',
   SEQUENCES: 'mct:sequences',
+  USER_PROFILE: 'mct:userProfile',
   LAST_BACKUP: 'mct:lastBackup'
+};
+
+export const USER_ROLES = {
+  ADMIN: 'ADMIN',
+  PARTY: 'PARTY',
+  FACTORY: 'FACTORY'
+};
+
+export const ROLE_LABELS = {
+  [USER_ROLES.ADMIN]: 'Admin',
+  [USER_ROLES.PARTY]: 'Party',
+  [USER_ROLES.FACTORY]: 'Factory'
+};
+
+const DEFAULT_USER_PROFILE = {
+  role: USER_ROLES.ADMIN,
+  entityType: null,
+  entityId: null
 };
 
 export const ROUTES = {
@@ -49,6 +69,7 @@ export const ROUTES = {
   rateMaster: 'rate-master',
   newDeal: 'new-deal',
   recentDeals: 'recent-deals',
+  pdfCenter: 'pdf-center',
   partyLedger: 'party-ledger',
   factoryLedger: 'factory-ledger',
   partyPayment: 'party-payment',
@@ -63,6 +84,7 @@ export const NAV = [
   { route: ROUTES.rateMaster, label: 'Rate Master', icon: '💰' },
   { route: ROUTES.newDeal, label: 'New Deal', icon: '➕' },
   { route: ROUTES.recentDeals, label: 'Recent Deals', icon: '📋' },
+  { route: ROUTES.pdfCenter, label: 'PDF Center', icon: '📄' },
   { route: ROUTES.partyLedger, label: 'Party Ledger', icon: '👤' },
   { route: ROUTES.factoryLedger, label: 'Factory Ledger', icon: '🏭' },
   { route: ROUTES.partyPayment, label: 'Party Payment', icon: '💵' },
@@ -91,7 +113,8 @@ let state = {
   deals: [],
   payments: [],
   rates: [],
-  sequences: { deal: 0, payment: 0 }
+  sequences: { deal: 0, payment: 0 },
+  userProfile: { ...DEFAULT_USER_PROFILE }
 };
 
 let dataReady = false;
@@ -112,7 +135,255 @@ export function notify() {
 }
 
 export function getState() {
-  return state;
+  const profile = getUserProfile();
+  const role = normalizeRole(profile.role);
+  if (role === USER_ROLES.ADMIN) return state;
+  return {
+    ...state,
+    parties: getVisibleParties(role),
+    factories: getVisibleFactories(role),
+    deals: getVisibleDeals(role),
+    payments: getVisiblePayments(role),
+    rates: getVisibleRates(role)
+  };
+}
+
+export function getUserProfile() {
+  return state.userProfile || { ...DEFAULT_USER_PROFILE };
+}
+
+const RESTRICTED_LABEL = 'Restricted';
+
+function normalizeRole(role = getUserProfile().role) {
+  return role || USER_ROLES.ADMIN;
+}
+
+export function canViewSensitiveFields(role = getUserProfile().role) {
+  return normalizeRole(role) === USER_ROLES.ADMIN;
+}
+
+export function canViewFactoryDetails(role = getUserProfile().role) {
+  return normalizeRole(role) === USER_ROLES.ADMIN;
+}
+
+export function canViewPartyDetails(role = getUserProfile().role) {
+  return normalizeRole(role) === USER_ROLES.ADMIN;
+}
+
+function sanitizePartyForRole(party, role = getUserProfile().role) {
+  if (!party) return party;
+  const normalizedRole = normalizeRole(role);
+  if (normalizedRole === USER_ROLES.ADMIN) return party;
+  const profile = getUserProfile();
+  if (normalizedRole === USER_ROLES.PARTY) {
+    if (profile.entityId && party.id === profile.entityId) {
+      return { ...party, phone: '', address: '' };
+    }
+    return { ...party, name: RESTRICTED_LABEL, phone: '', address: '' };
+  }
+  return { ...party, name: RESTRICTED_LABEL, phone: '', address: '' };
+}
+
+function sanitizeFactoryForRole(factory, role = getUserProfile().role) {
+  if (!factory) return factory;
+  const normalizedRole = normalizeRole(role);
+  if (normalizedRole === USER_ROLES.ADMIN) return factory;
+  const profile = getUserProfile();
+  if (normalizedRole === USER_ROLES.FACTORY) {
+    if (profile.entityId && factory.id === profile.entityId) {
+      return { ...factory, phone: '', address: '' };
+    }
+    return { ...factory, name: RESTRICTED_LABEL, phone: '', address: '' };
+  }
+  return { ...factory, name: RESTRICTED_LABEL, phone: '', address: '' };
+}
+
+export function sanitizeDealForRole(deal, role = getUserProfile().role) {
+  if (!deal) return deal;
+  const normalizedRole = normalizeRole(role);
+  const normalized = normalizeDeal(deal);
+  if (normalizedRole === USER_ROLES.ADMIN) return normalized;
+
+  const profile = getUserProfile();
+  const type = String(normalized.type || 'SALE').toUpperCase();
+  if (normalizedRole === USER_ROLES.PARTY && type === 'PURCHASE') return null;
+  if (normalizedRole === USER_ROLES.FACTORY && type === 'SALE') return null;
+
+  if (normalizedRole === USER_ROLES.PARTY && profile.entityId && normalized.partyId !== profile.entityId) return null;
+  if (normalizedRole === USER_ROLES.FACTORY && profile.entityId && normalized.factoryId !== profile.entityId) return null;
+
+  const grades = normalized.grades.map((g) => ({
+    ...g,
+    commissionPerKg: 0,
+    profit: 0,
+    purchaseAmount: normalizedRole === USER_ROLES.PARTY ? 0 : g.purchaseAmount,
+    saleAmount: normalizedRole === USER_ROLES.FACTORY ? 0 : g.saleAmount,
+    partyRate: normalizedRole === USER_ROLES.FACTORY ? 0 : g.partyRate,
+    factoryRate: normalizedRole === USER_ROLES.PARTY ? 0 : g.factoryRate
+  }));
+
+  const totals = calcDealTotals(grades);
+  return {
+    ...normalized,
+    partyName: normalizedRole === USER_ROLES.FACTORY ? RESTRICTED_LABEL : normalized.partyName,
+    factoryName: normalizedRole === USER_ROLES.PARTY ? RESTRICTED_LABEL : normalized.factoryName,
+    grades,
+    ...totals,
+    totalPurchase: normalizedRole === USER_ROLES.PARTY ? 0 : totals.totalPurchase,
+    totalSale: normalizedRole === USER_ROLES.FACTORY ? 0 : totals.totalSale,
+    totalProfit: 0,
+    totalCommission: 0,
+    purchaseAmount: normalizedRole === USER_ROLES.PARTY ? 0 : totals.totalPurchase,
+    saleAmount: normalizedRole === USER_ROLES.FACTORY ? 0 : totals.totalSale
+  };
+}
+
+function sanitizePaymentForRole(payment, role = getUserProfile().role) {
+  if (!payment) return payment;
+  const normalizedRole = normalizeRole(role);
+  if (normalizedRole === USER_ROLES.ADMIN) return payment;
+
+  const profile = getUserProfile();
+  if (normalizedRole === USER_ROLES.PARTY) {
+    if (payment.type !== 'PARTY') return null;
+    if (profile.entityId && payment.partyId && payment.partyId !== profile.entityId) return null;
+    return { ...payment, entityName: payment.entityName || RESTRICTED_LABEL };
+  }
+
+  if (normalizedRole === USER_ROLES.FACTORY) {
+    if (payment.type !== 'FACTORY') return null;
+    if (profile.entityId && payment.factoryId && payment.factoryId !== profile.entityId) return null;
+    return { ...payment, entityName: payment.entityName || RESTRICTED_LABEL };
+  }
+
+  return null;
+}
+
+function sanitizeSnapshotForRole(data, role = getUserProfile().role) {
+  if (!data) return data;
+  const normalizedRole = normalizeRole(role);
+  if (normalizedRole === USER_ROLES.ADMIN) return data;
+  return {
+    ...data,
+    parties: (data.parties || []).map((party) => sanitizePartyForRole(party, normalizedRole)).filter(Boolean),
+    factories: (data.factories || []).map((factory) => sanitizeFactoryForRole(factory, normalizedRole)).filter(Boolean),
+    deals: (data.deals || []).map((deal) => sanitizeDealForRole(deal, normalizedRole)).filter(Boolean),
+    payments: (data.payments || []).map((payment) => sanitizePaymentForRole(payment, normalizedRole)).filter(Boolean),
+    rates: []
+  };
+}
+
+export function sanitizeStateForRole(role = getUserProfile().role) {
+  const normalizedRole = normalizeRole(role);
+  if (normalizedRole === USER_ROLES.ADMIN) return;
+  state.parties = (state.parties || []).map((party) => sanitizePartyForRole(party, normalizedRole)).filter(Boolean);
+  state.factories = (state.factories || []).map((factory) => sanitizeFactoryForRole(factory, normalizedRole)).filter(Boolean);
+  state.deals = (state.deals || []).map((deal) => sanitizeDealForRole(deal, normalizedRole)).filter(Boolean);
+  state.payments = (state.payments || []).map((payment) => sanitizePaymentForRole(payment, normalizedRole)).filter(Boolean);
+  state.rates = [];
+}
+
+export function getVisibleParties(role = getUserProfile().role) {
+  return (state.parties || []).map((party) => sanitizePartyForRole(party, role)).filter(Boolean);
+}
+
+export function getVisibleFactories(role = getUserProfile().role) {
+  return (state.factories || []).map((factory) => sanitizeFactoryForRole(factory, role)).filter(Boolean);
+}
+
+export function getVisibleDeals(role = getUserProfile().role) {
+  return (state.deals || []).map((deal) => sanitizeDealForRole(deal, role)).filter(Boolean);
+}
+
+export function getVisiblePayments(role = getUserProfile().role) {
+  return (state.payments || []).map((payment) => sanitizePaymentForRole(payment, role)).filter(Boolean);
+}
+
+export function getVisibleRates(role = getUserProfile().role) {
+  return normalizeRole(role) === USER_ROLES.ADMIN ? state.rates : [];
+}
+
+export function isAdminUser() {
+  return getUserProfile().role === USER_ROLES.ADMIN;
+}
+
+export function isPartyUser() {
+  return getUserProfile().role === USER_ROLES.PARTY;
+}
+
+export function isFactoryUser() {
+  return getUserProfile().role === USER_ROLES.FACTORY;
+}
+
+export function getUserEntityId() {
+  return getUserProfile().entityId;
+}
+
+export function getUserEntityType() {
+  return getUserProfile().entityType;
+}
+
+export function updateUserProfile(profile) {
+  state.userProfile = { ...DEFAULT_USER_PROFILE, ...state.userProfile, ...profile };
+  sanitizeStateForRole(state.userProfile.role);
+  persist();
+}
+
+export function getAllowedRoutes() {
+  const profile = getUserProfile();
+  const common = [ROUTES.dashboard, ROUTES.recentDeals, ROUTES.pdfCenter, ROUTES.reports];
+  if (profile.role === USER_ROLES.PARTY) {
+    return new Set([...common, ROUTES.partyLedger, ROUTES.partyPayment]);
+  }
+  if (profile.role === USER_ROLES.FACTORY) {
+    return new Set([...common, ROUTES.factoryLedger, ROUTES.factoryPayment]);
+  }
+  return new Set(Object.values(ROUTES));
+}
+
+export function getDefaultRouteForRole() {
+  const profile = getUserProfile();
+  if (profile.role === USER_ROLES.PARTY) return ROUTES.partyLedger;
+  if (profile.role === USER_ROLES.FACTORY) return ROUTES.factoryLedger;
+  return ROUTES.dashboard;
+}
+
+export function isRouteAllowed(route) {
+  return getAllowedRoutes().has(route);
+}
+
+export function ensureAllowedRoute(route) {
+  if (route === ROUTES.login) return route;
+  return isRouteAllowed(route) ? route : getDefaultRouteForRole();
+}
+
+export function filterDealsByUserRole(deals) {
+  const profile = getUserProfile();
+  if (profile.role === USER_ROLES.PARTY && profile.entityId) {
+    return deals.filter((d) => d.partyId === profile.entityId);
+  }
+  if (profile.role === USER_ROLES.FACTORY && profile.entityId) {
+    return deals.filter((d) => d.factoryId === profile.entityId);
+  }
+  return deals;
+}
+
+export function filterPaymentsByUserRole(payments) {
+  const profile = getUserProfile();
+  if (profile.role === USER_ROLES.PARTY && profile.entityId) {
+    return payments.filter((p) => p.type === 'PARTY' && p.partyId === profile.entityId);
+  }
+  if (profile.role === USER_ROLES.FACTORY && profile.entityId) {
+    return payments.filter((p) => p.type === 'FACTORY' && p.factoryId === profile.entityId);
+  }
+  return payments;
+}
+
+export function getEntityIdForRole(entityType) {
+  const profile = getUserProfile();
+  if (entityType === 'PARTY' && profile.role === USER_ROLES.PARTY) return profile.entityId;
+  if (entityType === 'FACTORY' && profile.role === USER_ROLES.FACTORY) return profile.entityId;
+  return null;
 }
 
 export function uid(prefix = 'id') {
@@ -176,8 +447,34 @@ function lsSet(key, data) {
   localStorage.setItem(key, wrap(data));
 }
 
+function saveStateToLocalStorage() {
+  try {
+    const role = normalizeRole(getUserProfile().role);
+    const visible = sanitizeSnapshotForRole({
+      settings: state.settings,
+      parties: state.parties,
+      factories: state.factories,
+      deals: state.deals,
+      payments: state.payments,
+      rates: state.rates,
+      sequences: state.sequences,
+      userProfile: state.userProfile
+    }, role);
+    lsSet(KEYS.SETTINGS, visible.settings);
+    lsSet(KEYS.PARTIES, visible.parties);
+    lsSet(KEYS.FACTORIES, visible.factories);
+    lsSet(KEYS.DEALS, visible.deals);
+    lsSet(KEYS.PAYMENTS, visible.payments);
+    lsSet(KEYS.RATES, visible.rates);
+    lsSet(KEYS.SEQUENCES, visible.sequences);
+    lsSet(KEYS.USER_PROFILE, visible.userProfile);
+  } catch (err) {
+    console.warn('Unable to save local data:', err.message);
+  }
+}
+
 function getFirestoreSnapshot() {
-  return {
+  return sanitizeSnapshotForRole({
     meta: { schemaVersion: 2 },
     settings: state.settings,
     parties: state.parties,
@@ -185,8 +482,29 @@ function getFirestoreSnapshot() {
     deals: state.deals,
     payments: state.payments,
     rates: state.rates,
-    sequences: state.sequences
-  };
+    sequences: state.sequences,
+    userProfile: state.userProfile
+  });
+}
+
+function hasLocalFirestoreData() {
+  if (state.parties.length || state.factories.length || state.deals.length || state.payments.length || state.rates.length) {
+    return true;
+  }
+  if ((state.sequences?.deal || 0) > 0 || (state.sequences?.payment || 0) > 0) {
+    return true;
+  }
+  const s = state.settings;
+  if (s.firebaseEnabled || (s.firebaseConfig && Object.keys(s.firebaseConfig).length > 0)) {
+    return true;
+  }
+  return (
+    s.companyName !== DEFAULT_SETTINGS.companyName ||
+    s.defaultCommissionPerKg !== DEFAULT_SETTINGS.defaultCommissionPerKg ||
+    s.bucketToKg !== DEFAULT_SETTINGS.bucketToKg ||
+    s.openingStockKg !== DEFAULT_SETTINGS.openingStockKg ||
+    s.warehouseName !== DEFAULT_SETTINGS.warehouseName
+  );
 }
 
 function applyDocToState(docId, payload) {
@@ -202,9 +520,11 @@ function applyDocToState(docId, payload) {
     case 'payments': state.payments = Array.isArray(payload) ? payload : []; break;
     case 'rates': state.rates = Array.isArray(payload) ? payload : []; break;
     case 'sequences': state.sequences = payload || { deal: 0, payment: 0 }; break;
+    case 'userProfile': state.userProfile = { ...DEFAULT_USER_PROFILE, ...payload }; break;
     case 'meta': break;
     default: break;
   }
+  sanitizeStateForRole(state.userProfile.role);
 }
 
 function applyFirestoreData(data) {
@@ -226,6 +546,11 @@ export function loadAll() {
   state.payments = lsGet(KEYS.PAYMENTS, []);
   state.rates = lsGet(KEYS.RATES, []);
   state.sequences = lsGet(KEYS.SEQUENCES, { deal: 0, payment: 0 });
+  state.userProfile = { ...DEFAULT_USER_PROFILE, ...lsGet(KEYS.USER_PROFILE, DEFAULT_USER_PROFILE) };
+  state.parties = (state.parties || []).map((p) => p);
+  state.factories = (state.factories || []).map((f) => f);
+  state.deals = (state.deals || []).map((d) => d);
+  state.payments = (state.payments || []).map((p) => p);
 }
 
 function readLocalStorageForMigration() {
@@ -234,6 +559,7 @@ function readLocalStorageForMigration() {
 }
 
 export function persist() {
+  saveStateToLocalStorage();
   notify();
   if (!isAuthenticated() || !dataReady) return;
 
@@ -379,15 +705,26 @@ export function importBackupData(parsed) {
 }
 
 export function exportBackupFile() {
+  const role = normalizeRole(getUserProfile().role);
+  const visible = sanitizeSnapshotForRole({
+    settings: state.settings,
+    parties: state.parties,
+    factories: state.factories,
+    deals: state.deals,
+    payments: state.payments,
+    rates: state.rates,
+    sequences: state.sequences,
+    userProfile: state.userProfile
+  }, role);
   const data = {};
   data[KEYS.META] = wrap({ schemaVersion: 2 });
-  data[KEYS.SETTINGS] = wrap(state.settings);
-  data[KEYS.PARTIES] = wrap(state.parties);
-  data[KEYS.FACTORIES] = wrap(state.factories);
-  data[KEYS.DEALS] = wrap(state.deals);
-  data[KEYS.PAYMENTS] = wrap(state.payments);
-  data[KEYS.RATES] = wrap(state.rates);
-  data[KEYS.SEQUENCES] = wrap(state.sequences);
+  data[KEYS.SETTINGS] = wrap(visible.settings);
+  data[KEYS.PARTIES] = wrap(visible.parties);
+  data[KEYS.FACTORIES] = wrap(visible.factories);
+  data[KEYS.DEALS] = wrap(visible.deals);
+  data[KEYS.PAYMENTS] = wrap(visible.payments);
+  data[KEYS.RATES] = wrap(visible.rates);
+  data[KEYS.SEQUENCES] = wrap(visible.sequences);
   const payload = JSON.stringify({ app: APP_NAME, exportedAt: new Date().toISOString(), data }, null, 2);
   const blob = new Blob([payload], { type: 'application/json' });
   saveLastBackupInfo(blob.size);
@@ -626,6 +963,7 @@ function buildGradeLines(rawGrades) {
 }
 
 export function saveDeal(input, editId = null) {
+  if (!isAdminUser()) throw new Error('Only admins can create or edit deals.');
   if (!input.date) throw new Error('Date is required.');
   const party = findOrCreateParty(input.partyName);
   const factory = findOrCreateFactory(input.factoryName);
@@ -633,6 +971,7 @@ export function saveDeal(input, editId = null) {
   const totals = calcDealTotals(grades);
   const gradeLabel = grades.map((g) => g.grade).join(', ');
   const base = {
+    type: input.type || 'SALE',
     date: input.date.slice(0, 10),
     partyId: party.id,
     partyName: party.name,
@@ -651,20 +990,24 @@ export function saveDeal(input, editId = null) {
     updatedAt: new Date().toISOString()
   };
 
+  let savedDeal = null;
   if (editId) {
     const i = state.deals.findIndex((d) => d.id === editId);
     if (i < 0) throw new Error('Deal not found.');
     state.deals[i] = { ...state.deals[i], ...base };
+    savedDeal = state.deals[i];
   } else {
     const seq = nextSeq('deal');
-    state.deals.push({
+    savedDeal = {
       id: uid('deal'),
       dealNo: docNo('deal', seq),
       ...base,
       createdAt: new Date().toISOString()
-    });
+    };
+    state.deals.push(savedDeal);
   }
   persist();
+  return savedDeal;
 }
 
 export function deleteDeal(id) {
@@ -693,6 +1036,12 @@ export function deleteRate(id) {
 }
 
 export function savePayment(input, type) {
+  const profile = getUserProfile();
+  if (profile.role === USER_ROLES.PARTY && type !== 'PARTY') throw new Error('You can only record party payments.');
+  if (profile.role === USER_ROLES.FACTORY && type !== 'FACTORY') throw new Error('You can only record factory payments.');
+  if (profile.role === USER_ROLES.PARTY && profile.entityId && input.partyId && input.partyId !== profile.entityId) throw new Error('You can only record your own payment.');
+  if (profile.role === USER_ROLES.FACTORY && profile.entityId && input.factoryId && input.factoryId !== profile.entityId) throw new Error('You can only record your own payment.');
+
   const amount = num(input.amount);
   if (amount <= 0) throw new Error('Amount must be greater than zero.');
   if (!input.date) throw new Error('Date is required.');
@@ -722,18 +1071,63 @@ export function savePayment(input, type) {
 }
 
 export function deletePayment(id) {
+  const profile = getUserProfile();
+  const payment = state.payments.find((p) => p.id === id);
+  if (profile.role === USER_ROLES.PARTY && (!payment || payment.type !== 'PARTY' || payment.partyId !== profile.entityId)) {
+    throw new Error('You can only delete your own party payment.');
+  }
+  if (profile.role === USER_ROLES.FACTORY && (!payment || payment.type !== 'FACTORY' || payment.factoryId !== profile.entityId)) {
+    throw new Error('You can only delete your own factory payment.');
+  }
   state.payments = state.payments.filter((p) => p.id !== id);
   persist();
 }
 
-export function partyLedger(partyId) {
-  const deals = state.deals.filter((d) => d.partyId === partyId).map(normalizeDeal).sort((a, b) => b.date.localeCompare(a.date));
-  const payments = state.payments.filter((p) => p.type === 'PARTY' && p.partyId === partyId).sort((a, b) => b.date.localeCompare(a.date));
+export function partyLedger(partyId, filters = {}) {
+  const profile = getUserProfile();
+  if (profile.role === USER_ROLES.PARTY) {
+    partyId = profile.entityId;
+  }
+  if (!partyId) {
+    return { deals: [], payments: [], totalKg: 0, totalSale: 0, totalPaid: 0, outstanding: 0, balance: 0, rows: [] };
+  }
+  const search = (filters.search || '').trim().toLowerCase();
+  const dateFrom = filters.dateFrom || '';
+  const dateTo = filters.dateTo || '';
+
+  const matchesSearch = (item) => {
+    if (!search) return true;
+    const haystack = [
+      item.dealNo, item.partyName, item.factoryName,
+      item.grade, item.remarks, item.paymentNo,
+      item.mode, item.referenceNo, item.entityName
+    ].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(search);
+  };
+
+  const inDateRange = (date) => {
+    if (dateFrom && date < dateFrom) return false;
+    if (dateTo && date > dateTo) return false;
+    return true;
+  };
+
+  const deals = getVisibleDeals(profile.role)
+    .filter((d) => d.partyId === partyId)
+    .map(normalizeDeal)
+    .filter((d) => matchesSearch(d) && inDateRange(d.date))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const payments = filterPaymentsByUserRole(state.payments)
+    .filter((p) => p.type === 'PARTY' && p.partyId === partyId)
+    .filter((p) => matchesSearch(p) && inDateRange(p.date))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
   const totalKg = round(deals.reduce((a, d) => a + d.totalKg, 0), 3);
   const totalSale = round(deals.reduce((a, d) => a + d.totalSale, 0), 2);
   const totalPaid = round(payments.reduce((a, p) => a + p.amount, 0), 2);
   const outstanding = round(totalSale - totalPaid, 2);
   const rows = [];
+
   deals.forEach((d) => rows.push({
     date: d.date,
     sort: d.date + d.createdAt,
@@ -743,21 +1137,69 @@ export function partyLedger(partyId) {
     debit: d.totalSale,
     credit: 0
   }));
-  payments.forEach((p) => rows.push({ date: p.date, sort: p.date + p.createdAt, ref: p.paymentNo, desc: `Payment — ${p.mode}`, kg: null, debit: 0, credit: p.amount }));
+
+  payments.forEach((p) => rows.push({
+    date: p.date,
+    sort: p.date + p.createdAt,
+    ref: p.paymentNo,
+    desc: `Payment — ${p.mode}`,
+    kg: null,
+    debit: 0,
+    credit: p.amount
+  }));
+
   rows.sort((a, b) => a.sort.localeCompare(b.sort));
   let bal = 0;
   rows.forEach((r) => { bal = round(bal + r.debit - r.credit, 2); r.balance = bal; });
+
   return { deals, payments, totalKg, totalSale, totalPaid, outstanding, balance: outstanding, rows };
 }
 
-export function factoryLedger(factoryId) {
-  const deals = state.deals.filter((d) => d.factoryId === factoryId).map(normalizeDeal).sort((a, b) => b.date.localeCompare(a.date));
-  const payments = state.payments.filter((p) => p.type === 'FACTORY' && p.factoryId === factoryId).sort((a, b) => b.date.localeCompare(a.date));
+export function factoryLedger(factoryId, filters = {}) {
+  const profile = getUserProfile();
+  if (profile.role === USER_ROLES.FACTORY) {
+    factoryId = profile.entityId;
+  }
+  if (!factoryId) {
+    return { deals: [], payments: [], totalKg: 0, totalPurchase: 0, totalPaid: 0, outstanding: 0, balance: 0, rows: [] };
+  }
+  const search = (filters.search || '').trim().toLowerCase();
+  const dateFrom = filters.dateFrom || '';
+  const dateTo = filters.dateTo || '';
+
+  const matchesSearch = (item) => {
+    if (!search) return true;
+    const haystack = [
+      item.dealNo, item.partyName, item.factoryName,
+      item.grade, item.remarks, item.paymentNo,
+      item.mode, item.referenceNo, item.entityName
+    ].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(search);
+  };
+
+  const inDateRange = (date) => {
+    if (dateFrom && date < dateFrom) return false;
+    if (dateTo && date > dateTo) return false;
+    return true;
+  };
+
+  const deals = getVisibleDeals(profile.role)
+    .filter((d) => d.factoryId === factoryId)
+    .map(normalizeDeal)
+    .filter((d) => matchesSearch(d) && inDateRange(d.date))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const payments = filterPaymentsByUserRole(state.payments)
+    .filter((p) => p.type === 'FACTORY' && p.factoryId === factoryId)
+    .filter((p) => matchesSearch(p) && inDateRange(p.date))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
   const totalKg = round(deals.reduce((a, d) => a + d.totalKg, 0), 3);
   const totalPurchase = round(deals.reduce((a, d) => a + d.totalPurchase, 0), 2);
   const totalPaid = round(payments.reduce((a, p) => a + p.amount, 0), 2);
   const outstanding = round(totalPurchase - totalPaid, 2);
   const rows = [];
+
   deals.forEach((d) => rows.push({
     date: d.date,
     sort: d.date + d.createdAt,
@@ -767,15 +1209,27 @@ export function factoryLedger(factoryId) {
     credit: d.totalPurchase,
     debit: 0
   }));
-  payments.forEach((p) => rows.push({ date: p.date, sort: p.date + p.createdAt, ref: p.paymentNo, desc: `Payment — ${p.mode}`, kg: null, credit: 0, debit: p.amount }));
+
+  payments.forEach((p) => rows.push({
+    date: p.date,
+    sort: p.date + p.createdAt,
+    ref: p.paymentNo,
+    desc: `Payment — ${p.mode}`,
+    kg: null,
+    credit: 0,
+    debit: p.amount
+  }));
+
   rows.sort((a, b) => a.sort.localeCompare(b.sort));
   let bal = 0;
   rows.forEach((r) => { bal = round(bal + r.credit - r.debit, 2); r.balance = bal; });
+
   return { deals, payments, totalKg, totalPurchase, totalPaid, outstanding, balance: outstanding, rows };
 }
 
 export function dashboardMetrics() {
-  const deals = state.deals.map(normalizeDeal);
+  const profile = getUserProfile();
+  const deals = filterDealsByUserRole(getVisibleDeals(profile.role).map(normalizeDeal));
   const totalDeals = deals.length;
   const totalKg = round(deals.reduce((a, d) => a + d.totalKg, 0), 3);
   const totalPurchase = round(deals.reduce((a, d) => a + d.totalPurchase, 0), 2);
@@ -784,8 +1238,16 @@ export function dashboardMetrics() {
   const totalCommission = round(deals.reduce((a, d) => a + d.totalCommission, 0), 2);
   let outstandingParty = 0;
   let outstandingFactory = 0;
-  state.parties.forEach((p) => { outstandingParty += partyLedger(p.id).outstanding; });
-  state.factories.forEach((f) => { outstandingFactory += factoryLedger(f.id).outstanding; });
+
+  if (profile.role === USER_ROLES.ADMIN) {
+    state.parties.forEach((p) => { outstandingParty += partyLedger(p.id).outstanding; });
+    state.factories.forEach((f) => { outstandingFactory += factoryLedger(f.id).outstanding; });
+  } else if (profile.role === USER_ROLES.PARTY && profile.entityId) {
+    outstandingParty = partyLedger(profile.entityId).outstanding;
+  } else if (profile.role === USER_ROLES.FACTORY && profile.entityId) {
+    outstandingFactory = factoryLedger(profile.entityId).outstanding;
+  }
+
   return {
     totalDeals, totalKg, totalPurchase, totalSale,
     totalProfit, totalCommission,
@@ -795,7 +1257,8 @@ export function dashboardMetrics() {
 }
 
 export function filterDeals(f = {}) {
-  let list = [...state.deals].map(normalizeDeal).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+  const profile = getUserProfile();
+  let list = filterDealsByUserRole(getVisibleDeals(profile.role).map(normalizeDeal)).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
   if (f.search) {
     const q = f.search.toLowerCase();
     list = list.filter((d) =>
@@ -848,8 +1311,9 @@ let currentRoute = ROUTES.dashboard;
 let routeParams = {};
 
 export function navigate(route, params = {}) {
+  const allowedRoute = ensureAllowedRoute(route);
   const qs = new URLSearchParams(params).toString();
-  window.location.hash = `#/${route}${qs ? '?' + qs : ''}`;
+  window.location.hash = `#/${allowedRoute}${qs ? '?' + qs : ''}`;
 }
 
 function parseHash() {
@@ -862,7 +1326,8 @@ function parseHash() {
 
 function renderNav() {
   const nav = document.getElementById('sidebarNav');
-  nav.innerHTML = NAV.map((n) =>
+  const allowed = getAllowedRoutes();
+  nav.innerHTML = NAV.filter((n) => allowed.has(n.route)).map((n) =>
     `<a href="#/${n.route}" class="nav-link${currentRoute === n.route ? ' active' : ''}" data-route="${n.route}">
       <span class="nav-icon">${n.icon}</span><span>${esc(n.label)}</span>
     </a>`
@@ -880,6 +1345,7 @@ const TITLES = {
   [ROUTES.rateMaster]: 'Rate Master',
   [ROUTES.newDeal]: 'New Deal',
   [ROUTES.recentDeals]: 'Recent Deals',
+  [ROUTES.pdfCenter]: 'PDF Center',
   [ROUTES.partyLedger]: 'Party Ledger',
   [ROUTES.factoryLedger]: 'Factory Ledger',
   [ROUTES.partyPayment]: 'Party Payment',
@@ -904,6 +1370,14 @@ function updateSyncBadge() {
 function render() {
   if (!isAuthenticated()) return;
 
+  const allowedRoute = ensureAllowedRoute(currentRoute);
+  if (allowedRoute !== currentRoute) {
+    currentRoute = allowedRoute;
+    routeParams = {};
+    navigate(currentRoute);
+    return;
+  }
+
   const el = document.getElementById('mainContent');
   document.getElementById('pageHeading').textContent = routeParams.id ? 'Edit Deal' : (TITLES[currentRoute] || APP_NAME);
   renderNav();
@@ -915,6 +1389,7 @@ function render() {
     case ROUTES.rateMaster: renderRateMaster(el); break;
     case ROUTES.newDeal: renderNewDeal(el, routeParams.id); break;
     case ROUTES.recentDeals: renderRecentDeals(el); break;
+    case ROUTES.pdfCenter: renderPdfCenter(el); break;
     case ROUTES.partyLedger: renderPartyLedger(el, routeParams.partyId); break;
     case ROUTES.factoryLedger: renderFactoryLedger(el, routeParams.factoryId); break;
     case ROUTES.partyPayment: renderPartyPayment(el); break;
@@ -922,7 +1397,7 @@ function render() {
     case ROUTES.reports: renderReports(el); break;
     case ROUTES.settings: renderSettings(el); break;
     case ROUTES.backup: renderBackup(el); break;
-    default: navigate(ROUTES.dashboard);
+    default: navigate(getDefaultRouteForRole());
   }
 }
 
@@ -993,6 +1468,7 @@ async function startAppForUser() {
       readyCalled = true;
       if (data) {
         applyFirestoreData(data);
+        saveStateToLocalStorage();
         dataReady = true;
       }
       finalizeAppBootstrap();
@@ -1010,6 +1486,7 @@ async function startAppForUser() {
     firestoreUnsub = startFirestoreSync({
       onDocUpdate: (docId, payload) => {
         applyDocToState(docId, payload);
+        saveStateToLocalStorage();
         if (dataReady) notify();
       },
       onReady: (data) => {
@@ -1017,7 +1494,7 @@ async function startAppForUser() {
           clearTimeout(appReadyTimer);
           appReadyTimer = null;
         }
-        if (Object.values(data).every((v) => v === undefined)) {
+        if (Object.values(data).every((v) => v === undefined) && hasLocalFirestoreData()) {
           saveAllToFirestore(getFirestoreSnapshot()).catch(() => {});
         }
         markReady(data);
@@ -1038,6 +1515,11 @@ async function startAppForUser() {
       onOnline: () => {
         updateSyncBadge();
         toast('Back online. Syncing data…');
+      },
+      onConflict: (docId, payload, remoteDeviceId) => {
+        toast(`Data updated from another device (${remoteDeviceId}). Refreshing...`, 'warn');
+        applyDocToState(docId, payload);
+        if (dataReady) notify();
       }
     });
 
@@ -1068,6 +1550,7 @@ function stopAppForUser() {
 async function bootstrap() {
   showLoading();
   try {
+    loadAll();
     await ensureFirebaseReady();
     await initFirebase(DEFAULT_FIREBASE_CONFIG);
     registerDataProvider(() => getFirestoreSnapshot());
@@ -1081,6 +1564,13 @@ async function bootstrap() {
   }
 
   onAuthChange(async (user) => {
+    if (!user) {
+      stopAppForUser();
+      return;
+    }
+
+    // Ensure auth.currentUser is available before starting Firestore sync.
+    const auth = await initAuth();
     if (!user) {
       stopAppForUser();
       return;

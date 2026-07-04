@@ -1,10 +1,10 @@
 import {
   getState, calcDeal, calcDealTotals, saveDeal, deleteDeal, saveRate, deleteRate,
-  fmtDate, fmtMoney, fmtNum, esc, toast, confirmAction, navigate, uid,
+  fmtDate, fmtMoney, fmtNum, num, esc, toast, confirmAction, navigate, uid,
   ROUTES, today, DEFAULT_COMMISSION, filterDeals,
   normalizeDeal, getDealGrades
 } from './app.js';
-import { exportDealsExcel } from './excel.js';
+import { exportDealsExcel, importRatesFromCsv } from './excel.js';
 import { printDealsPdf } from './pdf.js';
 
 export function renderRateMaster(container) {
@@ -20,6 +20,12 @@ export function renderRateMaster(container) {
         <input name="partyRate" type="number" step="0.01" readonly class="readonly" placeholder="Party Rate" />
         <button type="submit" class="btn btn-primary">Save Rate</button>
       </form>
+    </section>
+    <section class="action-bar">
+      <label class="btn btn-secondary file-btn">
+        <span aria-hidden="true">⬆</span> Import Rates from CSV
+        <input type="file" accept=".csv" id="importRatesCsv" hidden />
+      </label>
     </section>
     <section class="tableBox">
       <h2>Rate Master</h2>
@@ -82,6 +88,26 @@ export function renderRateMaster(container) {
       confirmAction('Delete this rate?', () => { deleteRate(btn.dataset.delRate); toast('Rate deleted.'); });
     });
   });
+
+  const importInput = container.querySelector('#importRatesCsv');
+  importInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    importInput.value = '';
+    if (!file) return;
+    try {
+      const result = await importRatesFromCsv(file);
+      if (result.ratesData && result.ratesData.length > 0) {
+        result.ratesData.forEach((rate) => saveRate(rate));
+      }
+      toast(`Imported ${result.imported} rates successfully.`);
+      if (result.errors.length > 0) {
+        console.warn('Import errors:', result.errors);
+      }
+      renderRateMaster(container);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
 }
 
 function defaultGradeRow(s, data = {}) {
@@ -101,7 +127,7 @@ function renderGradeRowHtml(row, s, grades) {
     <tr class="grade-row" data-line-id="${row.id}">
       <td><input type="text" class="grade-input" list="gradeList" value="${esc(row.grade)}" placeholder="Grade" required /></td>
       <td><input type="number" class="bucket-input" step="0.01" min="0" value="${row.bucket}" placeholder="Bucket" /></td>
-      <td><input type="number" class="kg-input" step="0.001" min="0" value="${row.kg}" placeholder="KG" data-manual="${row.kg ? '1' : ''}" /></td>
+      <td><input type="number" class="kg-input" step="0.001" min="0" value="${row.kg}" placeholder="KG" /></td>
       <td><input type="number" class="factory-rate-input" step="0.01" min="0" value="${row.factoryRate}" placeholder="Rate" required /></td>
       <td><input type="number" class="commission-input" step="0.01" min="0" value="${row.commissionPerKg}" placeholder="Comm" required /></td>
       <td class="calc-cell party-rate-cell">${fmtMoney(c.partyRate)}</td>
@@ -126,18 +152,21 @@ function collectGradeRows(tbody) {
 }
 
 function updateRowCalc(tr, s) {
+  const bucketInput = tr.querySelector('.bucket-input');
+  const kgInput = tr.querySelector('.kg-input');
   const row = {
-    bucket: tr.querySelector('.bucket-input').value,
-    kg: tr.querySelector('.kg-input').value,
+    bucket: bucketInput.value,
+    kg: kgInput.value,
     factoryRate: tr.querySelector('.factory-rate-input').value,
     commissionPerKg: tr.querySelector('.commission-input').value
   };
-  const kgInput = tr.querySelector('.kg-input');
+
   const c = calcDeal(row);
-  if (!kgInput.dataset.manual && tr.querySelector('.bucket-input').value) {
+  if (bucketInput.value && (!kgInput.dataset.manual || !kgInput.value)) {
     kgInput.value = c.kg;
     row.kg = c.kg;
   }
+
   const cFinal = calcDeal({
     ...row,
     kg: kgInput.value
@@ -301,13 +330,63 @@ export function renderNewDeal(container, editId = null) {
     e.preventDefault();
     try {
       const fd = new FormData(form);
+      const partyName = fd.get('partyName');
+      const factoryName = fd.get('factoryName');
+      const date = fd.get('date');
+      const grades = collectGradeRows(container.querySelector('#gradeTableBody'));
+      
+      // Validation
+      if (!partyName || !partyName.trim()) {
+        toast('Please select or enter a party name.', 'error');
+        form.querySelector('[name=partyName]').focus();
+        return;
+      }
+      if (!factoryName || !factoryName.trim()) {
+        toast('Please select or enter a factory name.', 'error');
+        form.querySelector('[name=factoryName]').focus();
+        return;
+      }
+      if (!date) {
+        toast('Please select a deal date.', 'error');
+        form.querySelector('[name=date]').focus();
+        return;
+      }
+      if (!grades || grades.length === 0) {
+        toast('Please add at least one grade.', 'error');
+        return;
+      }
+      
+      for (let i = 0; i < grades.length; i++) {
+        const g = grades[i];
+        if (!g.grade || !g.grade.trim()) {
+          toast(`Grade ${i + 1}: Please enter a grade name.`, 'error');
+          return;
+        }
+        if (!g.bucket || num(g.bucket) <= 0) {
+          toast(`Grade ${i + 1}: Please enter a valid bucket quantity.`, 'error');
+          return;
+        }
+        if (!g.kg || num(g.kg) <= 0) {
+          toast(`Grade ${i + 1}: Please enter a valid KG quantity.`, 'error');
+          return;
+        }
+        if (!g.factoryRate || num(g.factoryRate) <= 0) {
+          toast(`Grade ${i + 1}: Please enter a valid factory rate.`, 'error');
+          return;
+        }
+        if (!g.commissionPerKg || num(g.commissionPerKg) < 0) {
+          toast(`Grade ${i + 1}: Please enter a valid commission rate.`, 'error');
+          return;
+        }
+      }
+      
       saveDeal({
         type: dealTypeInput.value || 'SALE',
-        date: fd.get('date'),
-        partyName: fd.get('partyName'),
-        factoryName: fd.get('factoryName'),
+        date: date,
+        partyName: partyName,
+        factoryName: factoryName,
         remarks: fd.get('remarks'),
-        grades: collectGradeRows(container.querySelector('#gradeTableBody'))
+        grades: grades
       }, editId || null);
       toast(d ? 'Deal updated.' : 'Deal saved.');
       navigate(ROUTES.recentDeals);
@@ -440,7 +519,11 @@ export function renderRecentDeals(container) {
   });
   container.querySelectorAll('[data-del]').forEach((b) => {
     b.addEventListener('click', () => {
-      confirmAction('Delete this deal?', () => { deleteDeal(b.dataset.del); toast('Deal deleted.'); });
+      confirmAction('Delete this deal?', () => {
+        deleteDeal(b.dataset.del);
+        toast('Deal deleted.');
+        renderRecentDeals(container);
+      });
     });
   });
 }

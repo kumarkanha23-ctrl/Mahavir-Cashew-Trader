@@ -228,6 +228,110 @@ body {
   font-weight: 700;
 }
 
+/* PDF CENTER */
+.pdf-center-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.pdf-center-header {
+  background: var(--white);
+  border-radius: 16px;
+  padding: 20px 24px;
+  box-shadow: var(--shadow);
+}
+
+.pdf-center-header h2 {
+  color: var(--primary-dark);
+  margin-bottom: 6px;
+}
+
+.pdf-center-header p {
+  color: var(--muted);
+}
+
+.pdf-center-filters {
+  display: grid;
+  grid-template-columns: 2fr repeat(6, minmax(140px, 1fr));
+  gap: 12px;
+  background: var(--white);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.pdf-center-table-wrap {
+  background: var(--white);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.pdf-center-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pdf-center-table th,
+.pdf-center-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.pdf-center-table th {
+  background: #f8fafc;
+  color: var(--primary-dark);
+}
+
+.pdf-actions-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pdf-action-btn {
+  padding: 8px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+}
+
+.pdf-center-preview {
+  background: var(--white);
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+  min-height: 320px;
+}
+
+.pdf-preview-placeholder,
+.pdf-preview-loading,
+.pdf-preview-error {
+  color: var(--muted);
+  padding: 22px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  text-align: center;
+  background: #f8fafc;
+}
+
+.pdf-preview-card {
+  display: grid;
+  gap: 12px;
+}
+
+.pdf-preview-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.pdf-preview-document {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
 /* FORMS */
 .dealBox {
   background: var(--white);
@@ -453,6 +557,21 @@ label textarea {
 
 .file-btn { cursor: pointer; }
 .file-btn input { display: none; }
+
+.invoiceBtn {
+  padding: 6px 10px;
+  font-size: 14px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-right: 6px;
+}
+
+.invoiceBtn:hover {
+  background: var(--primary-dark);
+}
 
 /* FILTER */
 .filter-bar {
@@ -1101,6 +1220,7 @@ input::placeholder { color: #9ca3af; }
   .grid, .grid-3, .grid-4, .grid-5 { grid-template-columns: repeat(2, 1fr); }
   .info-cards { grid-template-columns: 1fr; }
   .backup-info-grid { grid-template-columns: 1fr; }
+  .grade-table { min-width: 900px; }
 }
 
 @media (max-width: 900px) {
@@ -1115,6 +1235,36 @@ input::placeholder { color: #9ca3af; }
   body.sidebar-open .sidebar { left: 0; }
 
   .main-content { padding: 16px; }
+  
+  .header {
+    padding: 12px 16px;
+  }
+  
+  .header-left { gap: 10px; }
+  .page-heading { font-size: 18px; }
+  
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .filter-bar input[type="search"] {
+    min-width: auto;
+  }
+  
+  .action-bar {
+    flex-direction: column;
+  }
+  
+  .action-bar .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .tableResponsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 @media (max-width: 600px) {
@@ -1123,9 +1273,92 @@ input::placeholder { color: #9ca3af; }
   .span-2 { grid-column: span 1; }
   .page-heading { font-size: 18px; }
   .card h2 { font-size: 22px; }
+  
+  .dealBox, .tableBox {
+    padding: 16px;
+    border-radius: 10px;
+  }
+  
+  .dealBox h2, .tableBox h2 {
+    font-size: 16px;
+  }
+  
+  .btn {
+    padding: 12px 16px;
+    font-size: 13px;
+  }
+  
+  .grade-table {
+    min-width: 700px;
+  }
+  
+  .grade-table input {
+    font-size: 12px;
+    padding: 6px 4px;
+  }
+  
+  .modal-box {
+    padding: 20px;
+    margin: 16px;
+  }
+  
+  .auth-card {
+    padding: 24px 20px;
+    margin: 20px 16px;
+  }
+  
+  .header-badge {
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+  
+  .header-user {
+    max-width: 120px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar {
+    width: 100%;
+    --sidebar-w: 100%;
+  }
+  
+  .sidebar-brand {
+    padding: 18px 14px;
+  }
+  
+  .nav-link {
+    padding: 14px 16px;
+    font-size: 15px;
+  }
+  
+  .grade-table {
+    min-width: 600px;
+  }
+  
+  table {
+    font-size: 12px;
+  }
+  
+  td, th {
+    padding: 6px 4px;
+  }
+  
+  .actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .actions .btn {
+    font-size: 11px;
+    padding: 6px 8px;
+  }
 }
 
 @media print {
   .sidebar, .header, .app-footer, .action-bar, .filter-bar, .btn { display: none !important; }
   .main-content { padding: 0; }
+  .dealBox, .tableBox { box-shadow: none; border: 1px solid #e5e7eb; }
 }

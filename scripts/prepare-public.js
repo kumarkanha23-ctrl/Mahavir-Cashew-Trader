@@ -4,9 +4,11 @@ const path = require('path');
 const root = process.cwd();
 const publicDir = path.join(root, 'public');
 
-if (!fs.existsSync(publicDir)) {
-  fs.mkdirSync(publicDir, { recursive: true });
+if (fs.existsSync(publicDir)) {
+  fs.rmSync(publicDir, { recursive: true, force: true });
 }
+
+fs.mkdirSync(publicDir, { recursive: true });
 
 const filesToCopy = [
   'index.html',
