@@ -1587,29 +1587,63 @@ input::placeholder {
   overflow-x: hidden;
 }
 
-/* Two-column wrapper: fixed left rail and flexible right content */
+/* Recent deals layout: single column with KPI bar and toolbar */
 .recent-content-grid {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: 1fr;
+  gap: 16px;
   align-items: start;
   width: 100%;
   min-width: 0;
-}
-
-.recent-left-rail {
-  /* fixed-width left rail for Today's Summary */
-  width: 220px;
-  min-width: 220px;
-  max-width: 220px;
 }
 
 .recent-right-content {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  flex: 1 1 auto; /* occupy remaining space */
+  gap: 12px;
+}
+
+/* KPI bar */
+.recent-kpi-bar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+  width: 100%;
+}
+
+.kpi-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: var(--shadow-soft);
+}
+
+.kpi-label { font-size: 12px; color: var(--muted); font-weight:600; }
+.kpi-value { font-size: 16px; color: var(--primary); font-weight:800; }
+
+.recent-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+}
+
+.recent-toolbar .toolbar-left { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.recent-toolbar .toolbar-right { display:flex; gap:8px; align-items:center; }
+
+@media (max-width: 1200px) {
+  .recent-kpi-bar { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 900px) {
+  .recent-kpi-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .recent-filter-panel {

@@ -2,7 +2,7 @@ import {
   getState, calcDeal, calcDealTotals, saveDeal, deleteDeal, saveRate, deleteRate,
   fmtDate, fmtMoney, fmtNum, num, esc, toast, confirmAction, navigate, uid,
   ROUTES, today, DEFAULT_COMMISSION, filterDeals,
-  normalizeDeal, getDealGrades
+  normalizeDeal, getDealGrades, dashboardMetrics
 } from './app.js';
 import { exportDealsExcel, importRatesFromCsv } from './excel.js';
 
@@ -652,64 +652,45 @@ export function renderRecentDeals(container) {
   const gradeOpts = [...new Set(getState().rates.map((r) => r.grade))].map((g) => `<option value="${g}" ${dealFilters.grade === g ? 'selected' : ''}>${esc(g)}</option>`).join('');
   const rangeStart = deals.length ? 1 : 0;
 
+  const metrics = dashboardMetrics();
+
   container.innerHTML = `
     <div class="recent-deals-page">
       <div class="recent-content-grid">
-        <aside class="recent-left-rail" aria-label="Today's Summary">
-          <section class="recent-today-card">
-            <h3>Today's Summary</h3>
-            <div class="todays-summary">
-              <div class="todays-summary-row">
-                <div class="todays-summary-label">Deals</div>
-                <div class="todays-summary-value">${deals.length}</div>
-              </div>
-              <div class="todays-summary-row">
-                <div class="todays-summary-label">Purchase</div>
-                <div class="todays-summary-value">${fmtMoney(totals.purchase)}</div>
-              </div>
-              <div class="todays-summary-row">
-                <div class="todays-summary-label">Sale</div>
-                <div class="todays-summary-value">${fmtMoney(totals.sale)}</div>
-              </div>
-              <div class="todays-summary-row">
-                <div class="todays-summary-label">Profit</div>
-                <div class="todays-summary-value">${fmtMoney(totals.profit)}</div>
-              </div>
-            </div>
-          </section>
-        </aside>
-
         <div class="recent-right-content">
-          <section class="recent-filter-panel">
-            <div class="recent-filter-top">
+          <section class="recent-kpi-bar">
+            <div class="kpi-card"><div class="kpi-label">Total Deals</div><div class="kpi-value">${metrics.totalDeals}</div></div>
+            <div class="kpi-card"><div class="kpi-label">Total KG</div><div class="kpi-value">${fmtNum(metrics.totalKg, 3)}</div></div>
+            <div class="kpi-card"><div class="kpi-label">Purchase</div><div class="kpi-value">${fmtMoney(metrics.totalPurchase)}</div></div>
+            <div class="kpi-card"><div class="kpi-label">Sale</div><div class="kpi-value">${fmtMoney(metrics.totalSale)}</div></div>
+            <div class="kpi-card"><div class="kpi-label">Profit</div><div class="kpi-value">${fmtMoney(metrics.totalProfit)}</div></div>
+            <div class="kpi-card"><div class="kpi-label">Outstanding Party</div><div class="kpi-value">${fmtMoney(metrics.outstandingParty)}</div></div>
+            <div class="kpi-card"><div class="kpi-label">Outstanding Factory</div><div class="kpi-value">${fmtMoney(metrics.outstandingFactory)}</div></div>
+          </section>
+
+          <section class="recent-toolbar">
+            <div class="toolbar-left">
               <div class="recent-search-wrap">
                 <input type="search" id="dealSearch" placeholder="Search deals, party, factory, grade..." value="${esc(dealFilters.search || '')}" />
                 <span class="recent-search-icon" aria-hidden="true">Search</span>
               </div>
               <label class="date-filter">From <input type="date" id="dealFrom" value="${dealFilters.dateFrom || ''}" /></label>
               <label class="date-filter">To <input type="date" id="dealTo" value="${dealFilters.dateTo || today()}" /></label>
-            </div>
-            <div class="recent-filter-bottom">
               <select id="dealParty"><option value="">All Parties</option>${partyOpts}</select>
               <select id="dealFactory"><option value="">All Factories</option>${factoryOpts}</select>
               <select id="dealGrade"><option value="">All Grades</option>${gradeOpts}</select>
-              <div class="recent-filter-actions">
-                <button type="button" class="btn btn-primary" id="searchBtn">Search</button>
-                <button type="button" class="btn btn-secondary" id="resetBtn">Reset</button>
-              </div>
+            </div>
+            <div class="toolbar-right">
+              <button type="button" class="btn btn-primary" id="searchBtn">Search</button>
+              <button type="button" class="btn btn-secondary" id="resetBtn">Reset</button>
+              <button type="button" class="btn btn-secondary" id="exportDealsExcel">Excel</button>
+              <button type="button" class="btn btn-secondary" disabled>PDF</button>
+              <button type="button" class="btn btn-secondary" disabled>Cols</button>
             </div>
           </section>
 
           <main class="recent-table-area">
-            <section class="recent-action-row">
-              <div class="recent-export-actions">
-                <button type="button" class="btn btn-secondary recent-tool-btn" id="exportDealsExcel"><span aria-hidden="true">Excel</span> Excel Export</button>
-                <button type="button" class="btn btn-secondary recent-tool-btn" disabled><span aria-hidden="true">PDF</span> PDF / Print</button>
-              </div>
-              <button type="button" class="btn btn-secondary recent-tool-btn" disabled><span aria-hidden="true">Cols</span> Column Settings</button>
-            </section>
-
-            <section class="tableBox recent-table-card">
+            <section class="tableBox recent-table-card compact">
               <div class="tableResponsive recent-table-wrap">
                 <table class="recent-deals-table">
                 <thead>
