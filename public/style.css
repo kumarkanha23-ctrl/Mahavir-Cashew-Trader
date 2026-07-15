@@ -39,7 +39,7 @@
   --warning: #F59E0B;
   --warn-bg: #FEF3C7;
   --warn-text: #92400E;
-  --sidebar-w: 200px;
+  --sidebar-w: 220px;
 }
 
 html { scroll-behavior: smooth; }
@@ -464,15 +464,16 @@ body {
 /* ================================ PREMIUM DASHBOARD ================================ */
 .dashboard-hero {
   display: flex;
-  align-items: stretch;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  padding: 24px;
-  border-radius: 24px;
-  background: linear-gradient(135deg, var(--primary) 0%, #1f7a41 100%);
-  color: white;
-  box-shadow: var(--shadow);
+  gap: 18px;
+  padding: 20px;
+  border-radius: 14px;
+  background: var(--white);
+  color: var(--text);
+  box-shadow: var(--shadow-md);
   margin-bottom: 20px;
+  border: 1px solid var(--border);
 }
 
 .hero-copy {
@@ -480,33 +481,30 @@ body {
 }
 
 .hero-pill {
-  display: inline-flex;
+  display: inline-block;
+  background: var(--primary-50);
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.16);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  color: var(--primary);
+  font-weight:700;
+  font-size:12px;
 }
 
 .hero-copy h2 {
-  margin: 10px 0 8px;
-  font-size: 24px;
-  color: white;
+  margin: 8px 0 10px;
+  color: var(--text);
+  font-size: 28px;
 }
 
 .hero-copy p {
-  max-width: 740px;
-  color: rgba(255,255,255,0.86);
-  font-size: 14px;
+  color: var(--muted);
+  max-width: 720px;
 }
 
 .hero-actions {
-  display: flex;
-  gap: 10px;
   margin-top: 12px;
-  flex-wrap: wrap;
+  display:flex;
+  gap:10px;
 }
 
 .hero-actions .btn {
@@ -514,11 +512,7 @@ body {
   padding: 9px 14px;
 }
 
-.hero-meta {
-  margin-top: 12px;
-  color: rgba(255,255,255,0.8);
-  font-size: 12px;
-}
+.hero-meta { margin-top: 10px; color: var(--muted); font-size: 13px; }
 
 .hero-stats {
   display: grid;
@@ -1586,7 +1580,36 @@ input::placeholder {
 .recent-deals-page {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 18px;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+/* Two-column wrapper: fixed left rail and flexible right content */
+.recent-content-grid {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+}
+
+.recent-left-rail {
+  /* fixed-width left rail for Today's Summary */
+  width: 220px;
+  min-width: 220px;
+  max-width: 220px;
+}
+
+.recent-right-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  flex: 1 1 auto; /* occupy remaining space */
 }
 
 .recent-filter-panel {
@@ -1594,7 +1617,9 @@ input::placeholder {
   border: 1px solid #e6ece8;
   border-radius: 14px;
   box-shadow: 0 10px 34px rgba(18, 43, 31, 0.06);
-  padding: 18px;
+  padding: 12px; /* reduced horizontal padding */
+  width: 100%;
+  min-width: 0;
 }
 
 .recent-filter-top,
@@ -1769,15 +1794,11 @@ input::placeholder {
   color: #10933f;
 }
 
-.recent-content-grid {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  gap: 26px;
-  align-items: start;
-}
-
-.recent-left-rail {
+.recent-table-area {
+  width: 100%;
+  max-width: none;
   min-width: 0;
+  flex: 1;
 }
 
 .recent-today-card {
@@ -1788,6 +1809,7 @@ input::placeholder {
   border-radius: 12px;
   background: linear-gradient(145deg, #11833b 0%, #0f6f34 58%, #0a5729 100%);
   box-shadow: 0 14px 34px rgba(9, 92, 43, 0.23);
+  width: 100%;
 }
 
 .recent-today-card h3 {
@@ -1850,24 +1872,40 @@ input::placeholder {
 
 .recent-table-card {
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 12px;
   border: 1px solid #dde8e1;
   box-shadow: 0 12px 38px rgba(24, 53, 37, 0.08);
+  width: 100%;
+  max-width: none;
+  min-width: 0;
 }
 
 .recent-table-wrap {
+  display: block;
   border-radius: 12px;
+  width: 100%; /* table wrapper should use full available width */
+  min-width: 0;
+  max-width: none;
+  overflow-x: auto; /* allow horizontal scroll when table wider than container */
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .recent-deals-table {
-  min-width: 1180px;
+  width: 100%; /* occupy remaining width */
+  min-width: 0;
+  table-layout: auto;
   border-collapse: separate;
   border-spacing: 0;
+  max-width: none;
 }
 
 .recent-deals-table thead {
   background: linear-gradient(180deg, #11823a, #0c682f);
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .recent-deals-table th {
@@ -2026,6 +2064,8 @@ input::placeholder {
   .backup-info-grid { grid-template-columns: 1fr; }
   .recent-summary-grid { grid-template-columns: repeat(2, 1fr); }
   .recent-content-grid { grid-template-columns: 1fr; }
+  .recent-left-rail { position: static; }
+  .recent-table-area { width: 100%; }
   .recent-today-card { position: static; }
   .recent-filter-top,
   .recent-filter-bottom { grid-template-columns: 1fr 1fr; }
@@ -2103,6 +2143,11 @@ input::placeholder {
   > div[style*="display: grid"] {
     grid-template-columns: 1fr !important;
   }
+}
+
+/* On medium screens allow horizontal scrolling only when needed */
+@media (max-width: 1100px) {
+  .recent-table-wrap { overflow-x: auto; }
 }
 
 @media (max-width: 600px) {

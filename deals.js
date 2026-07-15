@@ -497,34 +497,7 @@ function renderRecentDealsOld(container) {
       </div>
     </section>
 
-    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px;">
-      <aside>
-        <div class="todays-summary">
-          <h3>📅 Today's Summary</h3>
-          <div class="todays-summary-row">
-            <span class="todays-summary-label">Deals</span>
-            <span class="todays-summary-value">${deals.length}</span>
-          </div>
-          <div class="todays-summary-row">
-            <span class="todays-summary-label">Total KG</span>
-            <span class="todays-summary-value">${fmtNum(totals.kg, 3)}</span>
-          </div>
-          <div class="todays-summary-row">
-            <span class="todays-summary-label">Purchase</span>
-            <span class="todays-summary-value">${fmtMoney(totals.purchase)}</span>
-          </div>
-          <div class="todays-summary-row">
-            <span class="todays-summary-label">Sale</span>
-            <span class="todays-summary-value">${fmtMoney(totals.sale)}</span>
-          </div>
-          <div class="todays-summary-row">
-            <span class="todays-summary-label">Profit</span>
-            <span class="todays-summary-value">${fmtMoney(totals.profit)}</span>
-          </div>
-        </div>
-      </aside>
-
-      <main>
+    <main>
         <section class="filter-bar">
           <input type="search" id="dealSearch" placeholder="Search deals, party, factory, grade..." value="${esc(dealFilters.search || '')}" />
           <label>From <input type="date" id="dealFrom" value="${dealFilters.dateFrom || ''}" /></label>
@@ -570,7 +543,7 @@ function renderRecentDealsOld(container) {
           </div>
         </section>
       </main>
-    </div>`;
+    `;
 
   const applyFilters = () => {
     dealFilters = {
@@ -681,69 +654,64 @@ export function renderRecentDeals(container) {
 
   container.innerHTML = `
     <div class="recent-deals-page">
-      <section class="recent-filter-panel">
-        <div class="recent-filter-top">
-          <div class="recent-search-wrap">
-            <input type="search" id="dealSearch" placeholder="Search deals, party, factory, grade..." value="${esc(dealFilters.search || '')}" />
-            <span class="recent-search-icon" aria-hidden="true">Search</span>
-          </div>
-          <label class="date-filter">From <input type="date" id="dealFrom" value="${dealFilters.dateFrom || ''}" /></label>
-          <label class="date-filter">To <input type="date" id="dealTo" value="${dealFilters.dateTo || today()}" /></label>
-        </div>
-        <div class="recent-filter-bottom">
-          <select id="dealParty"><option value="">All Parties</option>${partyOpts}</select>
-          <select id="dealFactory"><option value="">All Factories</option>${factoryOpts}</select>
-          <select id="dealGrade"><option value="">All Grades</option>${gradeOpts}</select>
-          <div class="recent-filter-actions">
-            <button type="button" class="btn btn-primary" id="searchBtn">Search</button>
-            <button type="button" class="btn btn-secondary" id="resetBtn">Reset</button>
-          </div>
-        </div>
-      </section>
-
-      <section class="recent-summary-grid" aria-label="Recent deal totals">
-        <div class="recent-summary-card summary-green">
-          <div class="summary-icon">List</div>
-          <div><h4>Total Deals</h4><h2>${deals.length}</h2><p>Deals</p></div>
-        </div>
-        <div class="recent-summary-card summary-blue">
-          <div class="summary-icon">Buy</div>
-          <div><h4>Total Purchase</h4><h2>${fmtMoney(totals.purchase)}</h2><p>Amount</p></div>
-        </div>
-        <div class="recent-summary-card summary-gold">
-          <div class="summary-icon">Sale</div>
-          <div><h4>Total Sale</h4><h2>${fmtMoney(totals.sale)}</h2><p>Amount</p></div>
-        </div>
-        <div class="recent-summary-card summary-profit">
-          <div class="summary-icon">Up</div>
-          <div><h4>Total Profit</h4><h2>${fmtMoney(totals.profit)}</h2><p>Profit</p></div>
-        </div>
-      </section>
-
       <div class="recent-content-grid">
-        <aside class="recent-left-rail">
-          <div class="todays-summary recent-today-card">
-            <h3><span>Today's Summary</span><span aria-hidden="true">Cal</span></h3>
-            <div class="todays-summary-row"><span class="todays-summary-label">Deals</span><span class="todays-summary-value">${deals.length}</span></div>
-            <div class="todays-summary-row"><span class="todays-summary-label">Total KG</span><span class="todays-summary-value">${fmtNum(totals.kg, 3)}</span></div>
-            <div class="todays-summary-row"><span class="todays-summary-label">Purchase</span><span class="todays-summary-value">${fmtMoney(totals.purchase)}</span></div>
-            <div class="todays-summary-row"><span class="todays-summary-label">Sale</span><span class="todays-summary-value">${fmtMoney(totals.sale)}</span></div>
-            <div class="todays-summary-row"><span class="todays-summary-label">Profit</span><span class="todays-summary-value profit">${fmtMoney(totals.profit)}</span></div>
-          </div>
+        <aside class="recent-left-rail" aria-label="Today's Summary">
+          <section class="recent-today-card">
+            <h3>Today's Summary</h3>
+            <div class="todays-summary">
+              <div class="todays-summary-row">
+                <div class="todays-summary-label">Deals</div>
+                <div class="todays-summary-value">${deals.length}</div>
+              </div>
+              <div class="todays-summary-row">
+                <div class="todays-summary-label">Purchase</div>
+                <div class="todays-summary-value">${fmtMoney(totals.purchase)}</div>
+              </div>
+              <div class="todays-summary-row">
+                <div class="todays-summary-label">Sale</div>
+                <div class="todays-summary-value">${fmtMoney(totals.sale)}</div>
+              </div>
+              <div class="todays-summary-row">
+                <div class="todays-summary-label">Profit</div>
+                <div class="todays-summary-value">${fmtMoney(totals.profit)}</div>
+              </div>
+            </div>
+          </section>
         </aside>
 
-        <main class="recent-table-area">
-          <section class="recent-action-row">
-            <div class="recent-export-actions">
-              <button type="button" class="btn btn-secondary recent-tool-btn" id="exportDealsExcel"><span aria-hidden="true">Excel</span> Excel Export</button>
-              <button type="button" class="btn btn-secondary recent-tool-btn" disabled><span aria-hidden="true">PDF</span> PDF / Print</button>
+        <div class="recent-right-content">
+          <section class="recent-filter-panel">
+            <div class="recent-filter-top">
+              <div class="recent-search-wrap">
+                <input type="search" id="dealSearch" placeholder="Search deals, party, factory, grade..." value="${esc(dealFilters.search || '')}" />
+                <span class="recent-search-icon" aria-hidden="true">Search</span>
+              </div>
+              <label class="date-filter">From <input type="date" id="dealFrom" value="${dealFilters.dateFrom || ''}" /></label>
+              <label class="date-filter">To <input type="date" id="dealTo" value="${dealFilters.dateTo || today()}" /></label>
             </div>
-            <button type="button" class="btn btn-secondary recent-tool-btn" disabled><span aria-hidden="true">Cols</span> Column Settings</button>
+            <div class="recent-filter-bottom">
+              <select id="dealParty"><option value="">All Parties</option>${partyOpts}</select>
+              <select id="dealFactory"><option value="">All Factories</option>${factoryOpts}</select>
+              <select id="dealGrade"><option value="">All Grades</option>${gradeOpts}</select>
+              <div class="recent-filter-actions">
+                <button type="button" class="btn btn-primary" id="searchBtn">Search</button>
+                <button type="button" class="btn btn-secondary" id="resetBtn">Reset</button>
+              </div>
+            </div>
           </section>
 
-          <section class="tableBox recent-table-card">
-            <div class="tableResponsive recent-table-wrap">
-              <table class="recent-deals-table">
+          <main class="recent-table-area">
+            <section class="recent-action-row">
+              <div class="recent-export-actions">
+                <button type="button" class="btn btn-secondary recent-tool-btn" id="exportDealsExcel"><span aria-hidden="true">Excel</span> Excel Export</button>
+                <button type="button" class="btn btn-secondary recent-tool-btn" disabled><span aria-hidden="true">PDF</span> PDF / Print</button>
+              </div>
+              <button type="button" class="btn btn-secondary recent-tool-btn" disabled><span aria-hidden="true">Cols</span> Column Settings</button>
+            </section>
+
+            <section class="tableBox recent-table-card">
+              <div class="tableResponsive recent-table-wrap">
+                <table class="recent-deals-table">
                 <thead>
                   <tr>
                     <th>Deal No</th><th>Date</th><th>Party</th><th>Factory</th><th>Grade</th>
