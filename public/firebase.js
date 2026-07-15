@@ -11,7 +11,9 @@ export const DEFAULT_FIREBASE_CONFIG = {
 };
 
 export const FIRESTORE_COLLECTION = 'erp';
+export const USERS_COLLECTION = 'users';
 export const MIGRATION_FLAG = 'mct:firestoreMigrated';
+export const DEVICE_ID_KEY = 'mct:deviceId';
 
 /** Maps localStorage keys to Firestore document IDs. */
 export const DOC_IDS = {
@@ -22,8 +24,19 @@ export const DOC_IDS = {
   'mct:deals': 'deals',
   'mct:payments': 'payments',
   'mct:rates': 'rates',
-  'mct:sequences': 'sequences'
+  'mct:sequences': 'sequences',
+  'mct:userProfile': 'userProfile'
 };
+
+/** Get or create a unique device ID for this browser/device. */
+export function getDeviceId() {
+  let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+  if (!deviceId) {
+    deviceId = `device_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+    localStorage.setItem(DEVICE_ID_KEY, deviceId);
+  }
+  return deviceId;
+}
 
 const FIREBASE_SDK_VERSION = '10.12.0';
 const FIREBASE_SDK_BASE = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}`;
@@ -53,6 +66,7 @@ let listenerUnsubs = [];
 let isSaving = false;
 let syncCallbacks = null;
 let onlineStatus = navigator.onLine;
+let remoteDocExists = {};
 
 const CLOUD_PATH = 'mahavir_cashew_trader';
 
@@ -74,6 +88,10 @@ export function isFirestoreReady() {
 /** Firebase Authentication connection status. */
 export function isAuthReady() {
   return authReady && !!auth;
+}
+
+export function isUserSignedIn() {
+  return isAuthReady() && !!auth.currentUser;
 }
 
 export function isOnline() {
@@ -102,8 +120,9 @@ export function registerCloudImportHandler(fn) {
 
 function wrapPayload(data) {
   return {
-    v: 1,
+    v: 2,
     updatedAt: new Date().toISOString(),
+    deviceId: getDeviceId(),
     payload: data
   };
 }
@@ -181,8 +200,30 @@ async function enableOfflinePersistence() {
   }
 }
 
+function getCurrentUserUid() {
+  return auth?.currentUser?.uid || null;
+}
+
+function userDocRef(docId) {
+  const uid = getCurrentUserUid();
+  if (!uid) throw new Error('No authenticated user available for Firestore access.');
+  return firestore.collection(USERS_COLLECTION).doc(uid).collection(FIRESTORE_COLLECTION).doc(docId);
+}
+
 function erpRef(docId) {
-  return firestore.collection(FIRESTORE_COLLECTION).doc(docId);
+  return userDocRef(docId);
+}
+
+function isMeaningfulFirestoreDoc(docId, payload) {
+  if (payload === undefined || payload === null) return false;
+  if (docId === 'settings') {
+    const keys = Object.keys(payload || {});
+    return keys.length > 0;
+  }
+  if (Array.isArray(payload)) {
+    return payload.length > 0 || !!remoteDocExists[docId];
+  }
+  return true;
 }
 
 function collectWrappedData() {
@@ -204,7 +245,7 @@ function collectWrappedData() {
 }
 
 export async function syncToCloud() {
-  if (!isFirebaseReady()) throw new Error('Firebase is not configured. Add config in Settings.');
+  if (!isFirebaseReady() || !isUserSignedIn()) throw new Error('Firebase is not configured or authenticated. Add config in Settings and sign in.');
   const payload = {
     exportedAt: new Date().toISOString(),
     data: collectWrappedData()
@@ -219,7 +260,7 @@ export async function syncToCloud() {
 }
 
 export async function syncFromCloud() {
-  if (!isFirebaseReady()) throw new Error('Firebase is not configured.');
+  if (!isFirebaseReady() || !isUserSignedIn()) throw new Error('Firebase is not configured or authenticated.');
   let payload = null;
   if (database) {
     const snap = await database.ref(CLOUD_PATH).once('value');
@@ -247,7 +288,7 @@ export async function syncFromCloud() {
 
 export async function migrateLocalStorageToFirestore(readLocalData) {
   if (localStorage.getItem(MIGRATION_FLAG)) return false;
-  if (!isFirestoreReady()) return false;
+  if (!isFirestoreReady() || !isUserSignedIn()) return false;
 
   const hasLocal = Object.keys(DOC_IDS).some((key) => localStorage.getItem(key));
   if (!hasLocal) {
@@ -275,12 +316,12 @@ export async function migrateLocalStorageToFirestore(readLocalData) {
 }
 
 export async function saveAllToFirestore(data) {
-  if (!isFirestoreReady()) return;
+  if (!isFirestoreReady() || !isUserSignedIn()) return;
   isSaving = true;
   try {
     const batch = firestore.batch();
     Object.entries(data).forEach(([docId, payload]) => {
-      if (payload !== undefined) {
+      if (isMeaningfulFirestoreDoc(docId, payload)) {
         batch.set(erpRef(docId), wrapPayload(payload));
       }
     });
@@ -291,7 +332,7 @@ export async function saveAllToFirestore(data) {
 }
 
 export async function clearFirestoreData() {
-  if (!isFirestoreReady()) return;
+  if (!isFirestoreReady() || !isUserSignedIn()) return;
   isSaving = true;
   try {
     const batch = firestore.batch();
@@ -333,20 +374,32 @@ export async function importDataToFirestore(wrappedData, applyImport) {
 
 export function startFirestoreSync(callbacks) {
   stopFirestoreSync();
-  if (!isFirestoreReady()) return () => {};
+  if (!isFirestoreReady() || !isUserSignedIn()) return () => {};
 
   syncCallbacks = callbacks;
   const totalDocs = Object.keys(DOC_IDS).length;
   let readyFired = false;
   const loadedDocs = new Set();
   const pending = {};
+  const currentDeviceId = getDeviceId();
 
   listenerUnsubs = Object.values(DOC_IDS).map((docId) =>
     erpRef(docId).onSnapshot(
       (snap) => {
         if (isSaving) return;
         const data = snap.data();
-        pending[docId] = data ? unwrapPayload(data) : undefined;
+        const unwrapped = data ? unwrapPayload(data) : undefined;
+        remoteDocExists[docId] = snap.exists;
+        
+        // Conflict resolution: if update is from another device, notify user
+        if (data && data.deviceId && data.deviceId !== currentDeviceId && loadedDocs.has(docId) && readyFired) {
+          console.log(`Conflict detected on ${docId}: updated by device ${data.deviceId}`);
+          if (callbacks.onConflict) {
+            callbacks.onConflict(docId, unwrapped, data.deviceId);
+          }
+        }
+        
+        pending[docId] = unwrapped;
 
         if (!loadedDocs.has(docId)) {
           loadedDocs.add(docId);
@@ -378,6 +431,7 @@ export function startFirestoreSync(callbacks) {
 
   return () => {
     stopFirestoreSync();
+    remoteDocExists = {};
     window.removeEventListener('online', onOnline);
     window.removeEventListener('offline', onOffline);
   };

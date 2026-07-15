@@ -82,12 +82,16 @@ export async function initAuth() {
     }
 
     const authInstance = getAuth();
-    if (typeof authInstance?.authStateReady === 'function') {
-      await authInstance.authStateReady();
-    }
-    authReady = true;
-    notifyAuth(authInstance?.currentUser ?? null);
-    authInstance?.onAuthStateChanged((user) => {
+    await new Promise((resolve) => {
+      const unsubscribe = authInstance.onAuthStateChanged((user) => {
+        authReady = true;
+        notifyAuth(user);
+        unsubscribe();
+        resolve();
+      });
+    });
+
+    authInstance.onAuthStateChanged((user) => {
       notifyAuth(user);
     });
   })();
@@ -172,7 +176,14 @@ function friendlyAuthError(err) {
     'auth/email-already-in-use': 'An account with this email already exists.',
     'auth/weak-password': 'Password is too weak.',
     'auth/too-many-requests': 'Too many attempts. Try again later.',
-    'auth/network-request-failed': 'Network error. Check your connection.'
+    'auth/network-request-failed': 'Network error. Check your connection.',
+    'auth/popup-closed-by-user': 'Sign-in popup was closed.',
+    'auth/operation-not-allowed': 'This sign-in method is not enabled.',
+    'auth/requires-recent-login': 'Please sign in again to perform this action.',
+    'auth/unverified-email': 'Please verify your email address first.',
+    'auth/account-exists-with-different-credential': 'An account already exists with a different sign-in method.',
+    'auth/timeout': 'The operation has timed out. Please try again.',
+    'auth/internal-error': 'An internal error occurred. Please try again.'
   };
   return map[code] || err?.message || 'Authentication failed.';
 }

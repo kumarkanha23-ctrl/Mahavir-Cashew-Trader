@@ -3,38 +3,40 @@ import { APP_NAME, USER_ROLES, getUserProfile, fmtDate, fmtMoney, fmtNum, normal
 const PRINT_STYLE = `
   :root { color-scheme: light; }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: 'Segoe UI', Poppins, Arial, sans-serif; background: #f3f4f6; color: #1f2937; }
-  .pdf-shell { padding: 20px; }
-  .pdf-page { width: 100%; max-width: 210mm; margin: 0 auto; padding: 16mm; background: #fff; box-shadow: 0 10px 30px rgba(0,0,0,0.12); border-radius: 12px; }
-  .brand { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 2px solid #166534; }
+  html, body { width: 100%; margin: 0; padding: 0; overflow-x: hidden; }
+  body { font-family: 'Segoe UI', Poppins, Arial, sans-serif; background: #f3f4f6; color: #1f2937; }
+  .pdf-shell { width: 210mm; max-width: 210mm; margin: 0 auto; padding: 0; box-sizing: border-box; }
+  .pdf-page { width: 190mm; max-width: 190mm; min-height: 277mm; margin: 0 auto; padding: 10mm; background: #fff; overflow: hidden; border-radius: 12px; box-sizing: border-box; overflow-wrap: anywhere; word-break: break-word; }
+  .brand { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 2px solid #166534; page-break-inside: avoid; break-inside: avoid; }
   .brand h1 { margin: 0; font-size: 24px; color: #166534; }
   .brand .badge { padding: 6px 10px; border-radius: 999px; background: #f0fdf4; color: #166534; font-size: 12px; font-weight: 700; text-transform: uppercase; }
   .logo-box { display: inline-flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px; background: #f0fdf4; }
   .logo-badge { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; background: #166534; color: #fff; font-weight: 700; }
   .meta { color: #6b7280; font-size: 12px; margin-top: 4px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
-  .card { border: 1px solid #e5e7eb; padding: 12px; border-radius: 10px; background: #fafafa; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+  .card { border: 1px solid #e5e7eb; padding: 12px; border-radius: 10px; background: #fafafa; page-break-inside: avoid; break-inside: avoid; }
   .card h3 { margin: 0 0 8px 0; color: #166534; font-size: 14px; }
-  .card p { margin: 4px 0; font-size: 13px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  .card p { margin: 4px 0; font-size: 13px; overflow-wrap: anywhere; word-break: break-word; }
+  table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  th, td, tr { page-break-inside: avoid; break-inside: avoid; }
   th { background: #166534; color: #fff; padding: 10px 8px; text-align: left; }
-  td { padding: 8px; border-bottom: 1px solid #e5e7eb; }
+  td { padding: 8px; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; word-break: break-word; }
   tr:nth-child(even) td { background: #f9fafb; }
-  .summary { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
-  .summary .pill { flex: 1; min-width: 140px; background: #f0fdf4; padding: 10px 12px; border-radius: 8px; font-size: 13px; }
+  .summary { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; page-break-inside: avoid; break-inside: avoid; }
+  .summary .pill { flex: 1 1 0; min-width: 0; background: #f0fdf4; padding: 10px 12px; border-radius: 8px; font-size: 13px; overflow-wrap: anywhere; }
   .summary .pill strong { display: block; color: #166534; font-size: 16px; margin-top: 3px; }
   .status { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: #dcfce7; color: #166534; }
   .status.pending { background: #fef3c7; color: #92400e; }
-  .note { margin-top: 14px; padding: 10px 12px; border-left: 4px solid #166534; background: #f9fafb; font-size: 13px; }
+  .note { margin-top: 14px; padding: 10px 12px; border-left: 4px solid #166534; background: #f9fafb; font-size: 13px; overflow-wrap: anywhere; word-break: break-word; }
   .muted { color: #6b7280; }
-  .signature { margin-top: 24px; display: flex; justify-content: space-between; gap: 16px; }
-  .signature-box { flex: 1; border-top: 1px solid #cbd5e1; padding-top: 8px; font-size: 12px; color: #475569; }
-  .footer { margin-top: 20px; font-size: 12px; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 10px; }
+  .signature { margin-top: 24px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .signature-box { flex: 1; min-width: 0; border-top: 1px solid #cbd5e1; padding-top: 8px; font-size: 12px; color: #475569; overflow-wrap: anywhere; }
+  .footer { margin-top: 20px; font-size: 12px; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 10px; overflow-wrap: anywhere; }
   @page { size: A4; margin: 0; }
   @media print {
     body { background: #fff; }
-    .pdf-shell { padding: 0; }
-    .pdf-page { box-shadow: none; border-radius: 0; max-width: none; padding: 0; }
+    .pdf-shell { padding: 0; width: 210mm; max-width: 210mm; }
+    .pdf-page { box-shadow: none; border-radius: 0; width: 190mm; max-width: 190mm; padding: 10mm; }
   }
   @media (max-width: 700px) {
     .grid { grid-template-columns: 1fr; }
@@ -103,36 +105,54 @@ async function createPdfBlobFromHtml(htmlContent, options = {}) {
   wrapper.style.left = '0';
   wrapper.style.top = '0';
   wrapper.style.width = '210mm';
+  wrapper.style.maxWidth = '210mm';
   wrapper.style.minHeight = '297mm';
-  wrapper.style.padding = '24px';
+  wrapper.style.padding = '0';
   wrapper.style.background = '#fff';
   wrapper.style.zIndex = '2147483647';
   wrapper.style.visibility = 'visible';
   wrapper.style.opacity = '1';
-  wrapper.style.overflow = 'visible';
+  wrapper.style.overflow = 'hidden';
   wrapper.style.display = 'block';
+  wrapper.style.boxSizing = 'border-box';
 
   const printable = document.createElement('div');
-  printable.style.width = '210mm';
-  printable.style.maxWidth = '210mm';
+  printable.style.width = '190mm';
+  printable.style.maxWidth = '190mm';
+  printable.style.boxSizing = 'border-box';
   printable.style.margin = '0 auto';
   printable.style.background = '#fff';
-  printable.innerHTML = `<style>${PRINT_STYLE}</style><div class="pdf-shell"><div class="pdf-page">${htmlContent}</div></div>`;
+  printable.innerHTML = `<style>${PRINT_STYLE}</style>${htmlContent}`;
   wrapper.appendChild(printable);
   document.body.appendChild(wrapper);
+  const invoiceElement = printable.querySelector('.pdf-page') || printable;
   try {
     await ensureHtml2Pdf();
-    await waitForPdfRender(printable);
+    await waitForPdfRender(invoiceElement);
+    const rect = invoiceElement.getBoundingClientRect();
+    const targetWidth = Math.ceil(rect.width);
+    const targetHeight = Math.ceil(rect.height);
     const opt = {
-      margin: [12, 12, 12, 12],
+      margin: [0, 0, 0, 0],
       filename: fileName,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, letterRendering: true, logging: false },
-      jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+      html2canvas: {
+        scale: 1.5,
+        useCORS: true,
+        letterRendering: true,
+        logging: false,
+        scrollX: 0,
+        scrollY: 0,
+        width: targetWidth,
+        height: targetHeight,
+        windowWidth: targetWidth,
+        windowHeight: targetHeight
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
+      pagebreak: { mode: ['css', 'legacy'] }
     };
     const pdf = await new Promise((resolve, reject) => {
-      window.html2pdf().set(opt).from(printable).toPdf().output('blob').then(resolve).catch(reject);
+      window.html2pdf().set(opt).from(invoiceElement).toPdf().output('blob').then(resolve).catch(reject);
     });
     return pdf;
   } finally {

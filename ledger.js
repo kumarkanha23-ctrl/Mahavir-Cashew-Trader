@@ -4,10 +4,22 @@ import {
 import { exportLedgerExcel } from './excel.js';
 import { printLedgerPdf } from './pdf.js';
 
+function parseHashParams() {
+  const hash = window.location.hash.slice(1).replace(/^\//, '');
+  const [, qs] = hash.split('?');
+  const params = new URLSearchParams(qs || '');
+  return {
+    search: params.get('search') || '',
+    dateFrom: params.get('dateFrom') || '',
+    dateTo: params.get('dateTo') || ''
+  };
+}
+
 export function renderPartyLedger(container, partyId = null) {
   const parties = getState().parties.sort((a, b) => a.name.localeCompare(b.name));
   const party = partyId ? parties.find((p) => p.id === partyId) : null;
-  const report = party ? partyLedger(partyId) : null;
+  const { search, dateFrom, dateTo } = parseHashParams();
+  const report = party ? partyLedger(partyId, { search, dateFrom, dateTo }) : null;
 
   container.innerHTML = `
     <section class="filter-bar">
@@ -17,6 +29,9 @@ export function renderPartyLedger(container, partyId = null) {
           ${parties.map((p) => `<option value="${p.id}" ${p.id === partyId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
         </select>
       </label>
+      <label>Search<input id="partySearch" type="search" placeholder="Search deal no, grade, remarks" value="${esc(search)}" /></label>
+      <label>From<input id="partyDateFrom" type="date" value="${esc(dateFrom)}" /></label>
+      <label>To<input id="partyDateTo" type="date" value="${esc(dateTo)}" /></label>
     </section>
     ${report ? `
     <section class="summaryGrid">
@@ -75,9 +90,26 @@ export function renderPartyLedger(container, partyId = null) {
       </div>
     </section>` : '<p class="empty-msg">Select a party to view ledger.</p>'}`;
 
+  const updatePartyRoute = () => {
+    const params = {};
+    if (partyId) params.partyId = partyId;
+    const searchValue = container.querySelector('#partySearch')?.value.trim();
+    const dateFromValue = container.querySelector('#partyDateFrom')?.value;
+    const dateToValue = container.querySelector('#partyDateTo')?.value;
+    if (searchValue) params.search = searchValue;
+    if (dateFromValue) params.dateFrom = dateFromValue;
+    if (dateToValue) params.dateTo = dateToValue;
+    navigate(ROUTES.partyLedger, params);
+  };
+
   container.querySelector('#partySelect')?.addEventListener('change', (e) => {
-    if (e.target.value) navigate(ROUTES.partyLedger, { partyId: e.target.value });
+    partyId = e.target.value;
+    updatePartyRoute();
   });
+
+  container.querySelector('#partySearch')?.addEventListener('input', updatePartyRoute);
+  container.querySelector('#partyDateFrom')?.addEventListener('change', updatePartyRoute);
+  container.querySelector('#partyDateTo')?.addEventListener('change', updatePartyRoute);
 
   if (report && party) {
     container.querySelector('#partyExcel').addEventListener('click', () => exportLedgerExcel(report.rows, `party-${party.name}`));
@@ -88,7 +120,8 @@ export function renderPartyLedger(container, partyId = null) {
 export function renderFactoryLedger(container, factoryId = null) {
   const factories = getState().factories.sort((a, b) => a.name.localeCompare(b.name));
   const factory = factoryId ? factories.find((f) => f.id === factoryId) : null;
-  const report = factory ? factoryLedger(factoryId) : null;
+  const { search, dateFrom, dateTo } = parseHashParams();
+  const report = factory ? factoryLedger(factoryId, { search, dateFrom, dateTo }) : null;
 
   container.innerHTML = `
     <section class="filter-bar">
@@ -98,6 +131,9 @@ export function renderFactoryLedger(container, factoryId = null) {
           ${factories.map((f) => `<option value="${f.id}" ${f.id === factoryId ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}
         </select>
       </label>
+      <label>Search<input id="factorySearch" type="search" placeholder="Search deal no, grade, remarks" value="${esc(search)}" /></label>
+      <label>From<input id="factoryDateFrom" type="date" value="${esc(dateFrom)}" /></label>
+      <label>To<input id="factoryDateTo" type="date" value="${esc(dateTo)}" /></label>
     </section>
     ${report ? `
     <section class="summaryGrid">
@@ -156,9 +192,26 @@ export function renderFactoryLedger(container, factoryId = null) {
       </div>
     </section>` : '<p class="empty-msg">Select a factory to view ledger.</p>'}`;
 
+  const updateFactoryRoute = () => {
+    const params = {};
+    if (factoryId) params.factoryId = factoryId;
+    const searchValue = container.querySelector('#factorySearch')?.value.trim();
+    const dateFromValue = container.querySelector('#factoryDateFrom')?.value;
+    const dateToValue = container.querySelector('#factoryDateTo')?.value;
+    if (searchValue) params.search = searchValue;
+    if (dateFromValue) params.dateFrom = dateFromValue;
+    if (dateToValue) params.dateTo = dateToValue;
+    navigate(ROUTES.factoryLedger, params);
+  };
+
   container.querySelector('#factorySelect')?.addEventListener('change', (e) => {
-    if (e.target.value) navigate(ROUTES.factoryLedger, { factoryId: e.target.value });
+    factoryId = e.target.value;
+    updateFactoryRoute();
   });
+
+  container.querySelector('#factorySearch')?.addEventListener('input', updateFactoryRoute);
+  container.querySelector('#factoryDateFrom')?.addEventListener('change', updateFactoryRoute);
+  container.querySelector('#factoryDateTo')?.addEventListener('change', updateFactoryRoute);
 
   if (report && factory) {
     container.querySelector('#factoryExcel').addEventListener('click', () => exportLedgerExcel(report.rows, `factory-${factory.name}`));

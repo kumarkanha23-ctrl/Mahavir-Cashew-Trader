@@ -1272,6 +1272,7 @@ export function filterDeals(f = {}) {
   if (f.dateTo) list = list.filter((d) => d.date <= f.dateTo);
   if (f.partyId) list = list.filter((d) => d.partyId === f.partyId);
   if (f.factoryId) list = list.filter((d) => d.factoryId === f.factoryId);
+  if (f.grade) list = list.filter((d) => d.grades.some((g) => g.grade === f.grade));
   return list;
 }
 

@@ -1,6 +1,7 @@
 {
   "version": 2,
-  "public": ".",
+  "buildCommand": "npm run build",
+  "outputDirectory": "public",
   "routes": [
     { "src": "/(?!.*\\.)", "dest": "/index.html" },
     { "src": "/(.*)", "dest": "/$1" }

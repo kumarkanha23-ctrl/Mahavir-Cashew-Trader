@@ -1,17 +1,41 @@
 import {
   getState, dashboardMetrics, filterDeals, partyLedger, factoryLedger,
-  updateSettings, updateParty, updateFactory, deleteParty, deleteFactory,
+  saveDeal, updateSettings, updateParty, updateFactory, deleteParty, deleteFactory,
   exportBackupFile, importBackupFile, clearAllData,
   getLastBackupInfo, readBackupPreview, showBackupPreviewModal,
   fmtDate, fmtMoney, fmtNum, esc, toast, confirmAction, today,
   DEFAULT_COMMISSION, BUCKET_TO_KG
 } from './app.js';
-import { exportDealsExcel, exportPaymentsExcel } from './excel.js';
-import { printDealsPdf } from './pdf.js';
+import { exportDealsExcel, exportPaymentsExcel, exportReportCsv, importDealsFromCsv } from './excel.js';
+import { printDealsPdf, printHtmlPdf } from './pdf.js';
 import { syncToCloud, syncFromCloud, isFirebaseReady } from './firebase.js';
 
 let reportType = 'summary';
-let reportFilters = {};
+let reportFilters = { period: 'custom' };
+
+function getStartOfToday() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+function getDateNDaysAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+function getStartOfMonth() {
+  const d = new Date();
+  d.setDate(1);
+  return d.toISOString().slice(0, 10);
+}
+
+function getStartOfWeek() {
+  const d = new Date();
+  const day = d.getDay();
+  d.setDate(d.getDate() - day + 1);
+  return d.toISOString().slice(0, 10);
+}
 
 function buildOutstandingRows() {
   const { parties, factories } = getState();
@@ -39,11 +63,23 @@ export function renderReports(container) {
           <option value="factory-pay">Factory Payments</option>
         </select>
       </label>
+      <label>Period
+        <select id="reportPeriod">
+          <option value="custom">Custom</option>
+          <option value="daily">Today</option>
+          <option value="weekly">This Week</option>
+          <option value="monthly">This Month</option>
+        </select>
+      </label>
       <input type="search" id="reportSearch" placeholder="Search..." value="${esc(reportFilters.search || '')}" />
       <label>From <input type="date" id="reportFrom" value="${reportFilters.dateFrom || ''}" /></label>
       <label>To <input type="date" id="reportTo" value="${reportFilters.dateTo || today()}" /></label>
     </section>
     <section class="action-bar">
+      <label class="btn btn-secondary file-btn">
+        <span aria-hidden="true">⬆</span> Import Deals from CSV
+        <input type="file" accept=".csv" id="importDealsCsv" hidden />
+      </label>
       <button type="button" class="btn btn-secondary" id="reportExcel">Excel Export</button>
       <button type="button" class="btn btn-secondary" id="reportPdf">PDF / Print</button>
     </section>
@@ -51,15 +87,40 @@ export function renderReports(container) {
 
   const preview = container.querySelector('#reportPreview');
   const typeSel = container.querySelector('#reportType');
+  const periodSel = container.querySelector('#reportPeriod');
   typeSel.value = reportType;
+  periodSel.value = reportFilters.period || 'custom';
+
+  const applyPeriod = () => {
+    const period = periodSel.value;
+    const todayDate = getStartOfToday();
+    let fromDate = reportFilters.dateFrom || '';
+    let toDate = reportFilters.dateTo || todayDate;
+
+    if (period === 'daily') {
+      fromDate = todayDate;
+      toDate = todayDate;
+    } else if (period === 'weekly') {
+      fromDate = getStartOfWeek();
+      toDate = todayDate;
+    } else if (period === 'monthly') {
+      fromDate = getStartOfMonth();
+      toDate = todayDate;
+    }
+
+    reportFilters.period = period;
+    reportFilters.dateFrom = fromDate;
+    reportFilters.dateTo = toDate;
+    container.querySelector('#reportFrom').value = fromDate;
+    container.querySelector('#reportTo').value = toDate;
+  };
 
   const renderPreview = () => {
     reportType = typeSel.value;
-    reportFilters = {
-      search: container.querySelector('#reportSearch').value,
-      dateFrom: container.querySelector('#reportFrom').value,
-      dateTo: container.querySelector('#reportTo').value
-    };
+    reportFilters.period = periodSel.value;
+    reportFilters.search = container.querySelector('#reportSearch').value;
+    reportFilters.dateFrom = container.querySelector('#reportFrom').value;
+    reportFilters.dateTo = container.querySelector('#reportTo').value;
 
     if (reportType === 'summary') {
       const m = dashboardMetrics();
@@ -75,6 +136,19 @@ export function renderReports(container) {
           <div><strong>Outstanding Party:</strong> ${fmtMoney(m.outstandingParty)}</div>
           <div><strong>Outstanding Factory:</strong> ${fmtMoney(m.outstandingFactory)}</div>
         </div>`;
+      preview._deals = null;
+      preview._payments = null;
+      preview._rows = [
+        { Metric: 'Total Deals', Value: m.totalDeals },
+        { Metric: 'Total KG', Value: fmtNum(m.totalKg, 3) },
+        { Metric: 'Purchase', Value: fmtMoney(m.totalPurchase) },
+        { Metric: 'Sale', Value: fmtMoney(m.totalSale) },
+        { Metric: 'Profit', Value: fmtMoney(m.totalProfit) },
+        { Metric: 'Commission', Value: fmtMoney(m.totalCommission) },
+        { Metric: 'Outstanding Party', Value: fmtMoney(m.outstandingParty) },
+        { Metric: 'Outstanding Factory', Value: fmtMoney(m.outstandingFactory) }
+      ];
+      preview._exportType = 'summary';
       return;
     }
 
@@ -88,6 +162,13 @@ export function renderReports(container) {
         <h3>Factory Outstanding</h3>
         <table><thead><tr><th>Factory</th><th>Total Purchase</th><th>Paid</th><th>Outstanding</th></tr></thead>
         <tbody>${factoryRows.length ? factoryRows.map((r) => `<tr><td>${esc(r.name)}</td><td>${fmtMoney(r.total)}</td><td>${fmtMoney(r.paid)}</td><td>${fmtMoney(r.out)}</td></tr>`).join('') : '<tr><td colspan="4" class="empty">None</td></tr>'}</tbody></table>`;
+      preview._deals = null;
+      preview._payments = null;
+      preview._rows = [
+        ...partyRows.map((r) => ({ Name: r.name, Type: 'Party', Total: fmtMoney(r.total), Paid: fmtMoney(r.paid), Outstanding: fmtMoney(r.out) })),
+        ...factoryRows.map((r) => ({ Name: r.name, Type: 'Factory', Total: fmtMoney(r.total), Paid: fmtMoney(r.paid), Outstanding: fmtMoney(r.out) }))
+      ];
+      preview._exportType = 'outstanding';
       return;
     }
 
@@ -124,24 +205,73 @@ export function renderReports(container) {
         <tbody>${payments.map((p) => `<tr><td>${fmtDate(p.date)}</td><td>${esc(p.paymentNo)}</td><td>${esc(p.entityName)}</td><td>${fmtMoney(p.amount)}</td><td>${esc(p.mode)}</td></tr>`).join('')}</tbody>
       </table></div>`;
     preview._payments = payments;
+    preview._deals = null;
+    preview._rows = [];
+    return;
   };
 
   typeSel.addEventListener('change', renderPreview);
-  container.querySelector('#reportSearch').addEventListener('input', renderPreview);
-  container.querySelector('#reportFrom').addEventListener('change', renderPreview);
-  container.querySelector('#reportTo').addEventListener('change', renderPreview);
-
-  container.querySelector('#reportExcel').addEventListener('click', () => {
+  periodSel.addEventListener('change', () => {
+    applyPeriod();
     renderPreview();
-    if (preview._deals) exportDealsExcel(preview._deals, reportType);
-    else if (preview._payments) exportPaymentsExcel(preview._payments, reportType);
+  });
+  container.querySelector('#reportSearch').addEventListener('input', renderPreview);
+  container.querySelector('#reportFrom').addEventListener('change', () => {
+    reportFilters.period = 'custom';
+    renderPreview();
+  });
+  container.querySelector('#reportTo').addEventListener('change', () => {
+    reportFilters.period = 'custom';
+    renderPreview();
   });
 
-  container.querySelector('#reportPdf').addEventListener('click', () => {
+  const exportCurrent = () => {
     renderPreview();
-    if (preview._deals) printDealsPdf(reportType, preview._deals, preview._totals);
-    else {
-      import('./pdf.js').then(({ printHtmlPdf }) => printHtmlPdf('Report', preview.innerHTML));
+    if (preview._deals) {
+      exportDealsExcel(preview._deals, reportType);
+      return;
+    }
+    if (preview._payments) {
+      exportPaymentsExcel(preview._payments, reportType);
+      return;
+    }
+    if (preview._rows && preview._rows.length) {
+      exportReportCsv(preview._rows, reportType);
+      return;
+    }
+    toast('Nothing to export for this report.');
+  };
+
+  const printCurrent = () => {
+    renderPreview();
+    if (preview._deals) {
+      printDealsPdf(reportType, preview._deals, preview._totals);
+      return;
+    }
+    printHtmlPdf(`Report — ${reportType}`, preview.innerHTML);
+  };
+
+  container.querySelector('#reportExcel').addEventListener('click', exportCurrent);
+  container.querySelector('#reportPdf').addEventListener('click', printCurrent);
+
+  const importDealsInput = container.querySelector('#importDealsCsv');
+  importDealsInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    importDealsInput.value = '';
+    if (!file) return;
+    try {
+      const result = await importDealsFromCsv(file);
+      result.dealsData.forEach((deal) => {
+        try { saveDeal(deal); }
+        catch (err) { console.warn('Imported deal skipped:', err.message); }
+      });
+      toast(`Imported ${result.imported} deals successfully.`);
+      if (result.errors.length > 0) {
+        console.warn('Import errors:', result.errors);
+      }
+      renderPreview();
+    } catch (err) {
+      toast(err.message, 'error');
     }
   });
 

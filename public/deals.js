@@ -5,7 +5,6 @@ import {
   normalizeDeal, getDealGrades
 } from './app.js';
 import { exportDealsExcel, importRatesFromCsv } from './excel.js';
-import { printDealsPdf } from './pdf.js';
 
 export function renderRateMaster(container) {
   const rates = [...getState().rates].sort((a, b) => a.grade.localeCompare(b.grade));
@@ -411,7 +410,7 @@ function renderDealDetailRows(deal) {
       <td>${g ? fmtMoney(g.factoryRate) : '—'}</td><td>${g ? fmtMoney(g.commissionPerKg) : '—'}</td>
       <td>${g ? fmtMoney(g.partyRate) : '—'}</td>
       <td>${fmtMoney(d.totalPurchase)}</td><td>${fmtMoney(d.totalSale)}</td><td>${fmtMoney(d.totalProfit)}</td>
-      <td>${esc(d.remarks || '—')}</td>
+      <td><span class="status-badge completed">✓ Completed</span></td>
       <td class="actions">
         <button type="button" class="editBtn" data-edit="${d.id}">Edit</button>
         <button type="button" class="deleteBtn" data-del="${d.id}">Delete</button>
@@ -428,7 +427,7 @@ function renderDealDetailRows(deal) {
       <td>${fmtMoney(g.factoryRate)}</td><td>${fmtMoney(g.commissionPerKg)}</td>
       <td>${fmtMoney(g.partyRate)}</td>
       <td>${fmtMoney(g.purchaseAmount)}</td><td>${fmtMoney(g.saleAmount)}</td><td>${fmtMoney(g.profit)}</td>
-      <td>${i === 0 ? esc(d.remarks || '—') : ''}</td>
+      <td>${i === 0 ? '<span class="status-badge completed">✓ Completed</span>' : ''}</td>
       <td class="actions">${i === 0 ? `
         <button type="button" class="editBtn" data-edit="${d.id}">Edit</button>
         <button type="button" class="deleteBtn" data-del="${d.id}">Delete</button>` : ''}</td>
@@ -447,6 +446,224 @@ function renderDealDetailRows(deal) {
   return gradeRows + totalRow;
 }
 
+function renderRecentDealsOld(container) {
+  const deals = filterDeals(dealFilters);
+  const totals = {
+    bucket: deals.reduce((a, d) => a + d.totalBucket, 0),
+    kg: deals.reduce((a, d) => a + d.totalKg, 0),
+    purchase: deals.reduce((a, d) => a + d.totalPurchase, 0),
+    sale: deals.reduce((a, d) => a + d.totalSale, 0),
+    profit: deals.reduce((a, d) => a + d.totalProfit, 0),
+    commission: deals.reduce((a, d) => a + d.totalCommission, 0)
+  };
+  const partyOpts = getState().parties.map((p) => `<option value="${p.id}" ${dealFilters.partyId === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+  const factoryOpts = getState().factories.map((f) => `<option value="${f.id}" ${dealFilters.factoryId === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('');
+  const gradeOpts = [...new Set(getState().rates.map((r) => r.grade))].map((g) => `<option value="${g}" ${dealFilters.grade === g ? 'selected' : ''}>${esc(g)}</option>`).join('');
+
+  container.innerHTML = `
+    <section class="recent-deals-hero">
+      <h2>Recent Deals</h2>
+      <div class="recent-deals-badge">${deals.length} deals</div>
+    </section>
+
+    <section class="dashboard">
+      <div class="card">
+        <div class="card-icon">📊</div>
+        <div class="card-content">
+          <h4>Total Deals</h4>
+          <h2>${deals.length}</h2>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🛒</div>
+        <div class="card-content">
+          <h4>Total Purchase</h4>
+          <h2>${fmtMoney(totals.purchase)}</h2>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📦</div>
+        <div class="card-content">
+          <h4>Total Sale</h4>
+          <h2>${fmtMoney(totals.sale)}</h2>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📈</div>
+        <div class="card-content">
+          <h4>Total Profit</h4>
+          <h2>${fmtMoney(totals.profit)}</h2>
+        </div>
+      </div>
+    </section>
+
+    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px;">
+      <aside>
+        <div class="todays-summary">
+          <h3>📅 Today's Summary</h3>
+          <div class="todays-summary-row">
+            <span class="todays-summary-label">Deals</span>
+            <span class="todays-summary-value">${deals.length}</span>
+          </div>
+          <div class="todays-summary-row">
+            <span class="todays-summary-label">Total KG</span>
+            <span class="todays-summary-value">${fmtNum(totals.kg, 3)}</span>
+          </div>
+          <div class="todays-summary-row">
+            <span class="todays-summary-label">Purchase</span>
+            <span class="todays-summary-value">${fmtMoney(totals.purchase)}</span>
+          </div>
+          <div class="todays-summary-row">
+            <span class="todays-summary-label">Sale</span>
+            <span class="todays-summary-value">${fmtMoney(totals.sale)}</span>
+          </div>
+          <div class="todays-summary-row">
+            <span class="todays-summary-label">Profit</span>
+            <span class="todays-summary-value">${fmtMoney(totals.profit)}</span>
+          </div>
+        </div>
+      </aside>
+
+      <main>
+        <section class="filter-bar">
+          <input type="search" id="dealSearch" placeholder="Search deals, party, factory, grade..." value="${esc(dealFilters.search || '')}" />
+          <label>From <input type="date" id="dealFrom" value="${dealFilters.dateFrom || ''}" /></label>
+          <label>To <input type="date" id="dealTo" value="${dealFilters.dateTo || today()}" /></label>
+          <select id="dealFactory"><option value="">All Factories</option>${factoryOpts}</select>
+          <select id="dealGrade"><option value="">All Grades</option>${gradeOpts}</select>
+          <select id="dealParty"><option value="">All Parties</option>${partyOpts}</select>
+          <button type="button" class="btn btn-primary" id="searchBtn" style="min-width: 100px;">Search</button>
+          <button type="button" class="btn btn-secondary" id="resetBtn" style="min-width: 80px;">Reset</button>
+        </section>
+
+        <section class="tableBox">
+          <div class="table-header-row">
+            <div>
+              <h2>Deal Ledger</h2>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <div class="table-status-pill">${deals.length} ${deals.length === 1 ? 'deal' : 'deals'}</div>
+              <button type="button" class="btn btn-secondary" id="exportDealsExcel" style="font-size: 12px; padding: 8px 12px;">📥 Excel Export</button>
+            </div>
+          </div>
+          <div class="tableResponsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>Deal No</th><th>Date</th><th>Party</th><th>Factory</th><th>Grade</th>
+                  <th>Bucket</th><th>KG</th><th>Factory Rate</th><th>Comm/KG</th><th>Party Rate</th>
+                  <th>Purchase</th><th>Sale</th><th>Profit</th><th>Status</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${deals.length ? deals.map((d) => renderDealDetailRows(d)).join('') : '<tr><td colspan="15" class="empty">No deals found. Adjust filters or create a new deal.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+          <div class="table-totals">
+            <span>Total Bucket: ${fmtNum(totals.bucket, 2)}</span>
+            <span>Total KG: ${fmtNum(totals.kg, 3)}</span>
+            <span>Purchase: ${fmtMoney(totals.purchase)}</span>
+            <span>Sale: ${fmtMoney(totals.sale)}</span>
+            <span>Profit: ${fmtMoney(totals.profit)}</span>
+            <span>Commission: ${fmtMoney(totals.commission)}</span>
+          </div>
+        </section>
+      </main>
+    </div>`;
+
+  const applyFilters = () => {
+    dealFilters = {
+      search: container.querySelector('#dealSearch').value,
+      dateFrom: container.querySelector('#dealFrom').value,
+      dateTo: container.querySelector('#dealTo').value,
+      factoryId: container.querySelector('#dealFactory').value || undefined,
+      grade: container.querySelector('#dealGrade').value || undefined,
+      partyId: container.querySelector('#dealParty').value || undefined
+    };
+    renderRecentDeals(container);
+  };
+
+  const resetFilters = () => {
+    dealFilters = {
+      dateFrom: '',
+      dateTo: today()
+    };
+    renderRecentDeals(container);
+  };
+
+  container.querySelector('#dealSearch').addEventListener('input', applyFilters);
+  container.querySelector('#dealFrom').addEventListener('change', applyFilters);
+  container.querySelector('#dealTo').addEventListener('change', applyFilters);
+  container.querySelector('#dealFactory').addEventListener('change', applyFilters);
+  container.querySelector('#dealGrade').addEventListener('change', applyFilters);
+  container.querySelector('#dealParty').addEventListener('change', applyFilters);
+  container.querySelector('#searchBtn').addEventListener('click', applyFilters);
+  container.querySelector('#resetBtn').addEventListener('click', resetFilters);
+
+  container.querySelector('#exportDealsExcel').addEventListener('click', () => exportDealsExcel(deals, 'recent-deals'));
+
+  container.querySelectorAll('[data-edit]').forEach((b) => {
+    b.addEventListener('click', () => navigate(ROUTES.newDeal, { id: b.dataset.edit }));
+  });
+  container.querySelectorAll('[data-del]').forEach((b) => {
+    b.addEventListener('click', () => {
+      confirmAction('Delete this deal?', () => {
+        deleteDeal(b.dataset.del);
+        toast('Deal deleted.');
+        renderRecentDeals(container);
+      });
+    });
+  });
+}
+
+function renderRecentDealRowsModern(deal) {
+  const d = normalizeDeal(deal);
+  const actionButtons = `
+    <button type="button" class="iconAction editBtn" data-edit="${d.id}" aria-label="Edit deal" title="Edit deal">Edit</button>
+    <button type="button" class="iconAction deleteBtn" data-del="${d.id}" aria-label="Delete deal" title="Delete deal">Delete</button>`;
+
+  if (d.grades.length <= 1) {
+    const g = d.grades[0];
+    return `<tr class="recent-deal-row">
+      <td><span class="deal-no-pill">${esc(d.dealNo)}</span></td>
+      <td>${fmtDate(d.date)}</td>
+      <td>${esc(d.partyName)}</td>
+      <td>${esc(d.factoryName)}</td>
+      <td>${esc(g?.grade || '-')}</td>
+      <td>${g?.bucket ?? '-'}</td>
+      <td>${fmtNum(d.totalKg, 3)}</td>
+      <td>${g ? fmtMoney(g.factoryRate) : '-'}</td>
+      <td>${g ? fmtMoney(g.commissionPerKg) : '-'}</td>
+      <td>${g ? fmtMoney(g.partyRate) : '-'}</td>
+      <td>${fmtMoney(d.totalPurchase)}</td>
+      <td>${fmtMoney(d.totalSale)}</td>
+      <td class="profit-cell">${fmtMoney(d.totalProfit)}</td>
+      <td><span class="status-badge completed">Completed</span></td>
+      <td class="actions recent-deal-actions">${actionButtons}</td>
+    </tr>`;
+  }
+
+  return d.grades.map((g, i) => `
+    <tr class="recent-deal-row grade-sub-row">
+      <td>${i === 0 ? `<span class="deal-no-pill">${esc(d.dealNo)}</span>` : ''}</td>
+      <td>${i === 0 ? fmtDate(d.date) : ''}</td>
+      <td>${i === 0 ? esc(d.partyName) : ''}</td>
+      <td>${i === 0 ? esc(d.factoryName) : ''}</td>
+      <td>${esc(g.grade)}</td>
+      <td>${g.bucket}</td>
+      <td>${fmtNum(g.kg, 3)}</td>
+      <td>${fmtMoney(g.factoryRate)}</td>
+      <td>${fmtMoney(g.commissionPerKg)}</td>
+      <td>${fmtMoney(g.partyRate)}</td>
+      <td>${fmtMoney(g.purchaseAmount)}</td>
+      <td>${fmtMoney(g.saleAmount)}</td>
+      <td class="profit-cell">${fmtMoney(g.profit)}</td>
+      <td>${i === 0 ? '<span class="status-badge completed">Completed</span>' : ''}</td>
+      <td class="actions recent-deal-actions">${i === 0 ? actionButtons : ''}</td>
+    </tr>`).join('');
+}
+
 export function renderRecentDeals(container) {
   const deals = filterDeals(dealFilters);
   const totals = {
@@ -458,50 +675,130 @@ export function renderRecentDeals(container) {
     commission: deals.reduce((a, d) => a + d.totalCommission, 0)
   };
   const partyOpts = getState().parties.map((p) => `<option value="${p.id}" ${dealFilters.partyId === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+  const factoryOpts = getState().factories.map((f) => `<option value="${f.id}" ${dealFilters.factoryId === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('');
+  const gradeOpts = [...new Set(getState().rates.map((r) => r.grade))].map((g) => `<option value="${g}" ${dealFilters.grade === g ? 'selected' : ''}>${esc(g)}</option>`).join('');
+  const rangeStart = deals.length ? 1 : 0;
 
   container.innerHTML = `
-    <section class="filter-bar">
-      <input type="search" id="dealSearch" placeholder="Search deals..." value="${esc(dealFilters.search || '')}" />
-      <label>From <input type="date" id="dealFrom" value="${dealFilters.dateFrom || ''}" /></label>
-      <label>To <input type="date" id="dealTo" value="${dealFilters.dateTo || today()}" /></label>
-      <select id="dealParty"><option value="">All Parties</option>${partyOpts}</select>
-    </section>
-    <section class="action-bar">
-      <button type="button" class="btn btn-secondary" id="exportDealsExcel">Excel Export</button>
-      <button type="button" class="btn btn-secondary" id="exportDealsPdf">PDF / Print</button>
-    </section>
-    <section class="tableBox">
-      <h2>Recent Deals (${deals.length})</h2>
-      <div class="tableResponsive">
-        <table>
-          <thead>
-            <tr>
-              <th>Deal No</th><th>Date</th><th>Party</th><th>Factory</th><th>Grade</th>
-              <th>Bucket</th><th>KG</th><th>Factory Rate</th><th>Comm/KG</th><th>Party Rate</th>
-              <th>Purchase</th><th>Sale</th><th>Profit</th><th>Remarks</th><th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${deals.length ? deals.map((d) => renderDealDetailRows(d)).join('') : '<tr><td colspan="15" class="empty">No deals found.</td></tr>'}
-          </tbody>
-        </table>
+    <div class="recent-deals-page">
+      <section class="recent-filter-panel">
+        <div class="recent-filter-top">
+          <div class="recent-search-wrap">
+            <input type="search" id="dealSearch" placeholder="Search deals, party, factory, grade..." value="${esc(dealFilters.search || '')}" />
+            <span class="recent-search-icon" aria-hidden="true">Search</span>
+          </div>
+          <label class="date-filter">From <input type="date" id="dealFrom" value="${dealFilters.dateFrom || ''}" /></label>
+          <label class="date-filter">To <input type="date" id="dealTo" value="${dealFilters.dateTo || today()}" /></label>
+        </div>
+        <div class="recent-filter-bottom">
+          <select id="dealParty"><option value="">All Parties</option>${partyOpts}</select>
+          <select id="dealFactory"><option value="">All Factories</option>${factoryOpts}</select>
+          <select id="dealGrade"><option value="">All Grades</option>${gradeOpts}</select>
+          <div class="recent-filter-actions">
+            <button type="button" class="btn btn-primary" id="searchBtn">Search</button>
+            <button type="button" class="btn btn-secondary" id="resetBtn">Reset</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="recent-summary-grid" aria-label="Recent deal totals">
+        <div class="recent-summary-card summary-green">
+          <div class="summary-icon">List</div>
+          <div><h4>Total Deals</h4><h2>${deals.length}</h2><p>Deals</p></div>
+        </div>
+        <div class="recent-summary-card summary-blue">
+          <div class="summary-icon">Buy</div>
+          <div><h4>Total Purchase</h4><h2>${fmtMoney(totals.purchase)}</h2><p>Amount</p></div>
+        </div>
+        <div class="recent-summary-card summary-gold">
+          <div class="summary-icon">Sale</div>
+          <div><h4>Total Sale</h4><h2>${fmtMoney(totals.sale)}</h2><p>Amount</p></div>
+        </div>
+        <div class="recent-summary-card summary-profit">
+          <div class="summary-icon">Up</div>
+          <div><h4>Total Profit</h4><h2>${fmtMoney(totals.profit)}</h2><p>Profit</p></div>
+        </div>
+      </section>
+
+      <div class="recent-content-grid">
+        <aside class="recent-left-rail">
+          <div class="todays-summary recent-today-card">
+            <h3><span>Today's Summary</span><span aria-hidden="true">Cal</span></h3>
+            <div class="todays-summary-row"><span class="todays-summary-label">Deals</span><span class="todays-summary-value">${deals.length}</span></div>
+            <div class="todays-summary-row"><span class="todays-summary-label">Total KG</span><span class="todays-summary-value">${fmtNum(totals.kg, 3)}</span></div>
+            <div class="todays-summary-row"><span class="todays-summary-label">Purchase</span><span class="todays-summary-value">${fmtMoney(totals.purchase)}</span></div>
+            <div class="todays-summary-row"><span class="todays-summary-label">Sale</span><span class="todays-summary-value">${fmtMoney(totals.sale)}</span></div>
+            <div class="todays-summary-row"><span class="todays-summary-label">Profit</span><span class="todays-summary-value profit">${fmtMoney(totals.profit)}</span></div>
+          </div>
+        </aside>
+
+        <main class="recent-table-area">
+          <section class="recent-action-row">
+            <div class="recent-export-actions">
+              <button type="button" class="btn btn-secondary recent-tool-btn" id="exportDealsExcel"><span aria-hidden="true">Excel</span> Excel Export</button>
+              <button type="button" class="btn btn-secondary recent-tool-btn" disabled><span aria-hidden="true">PDF</span> PDF / Print</button>
+            </div>
+            <button type="button" class="btn btn-secondary recent-tool-btn" disabled><span aria-hidden="true">Cols</span> Column Settings</button>
+          </section>
+
+          <section class="tableBox recent-table-card">
+            <div class="tableResponsive recent-table-wrap">
+              <table class="recent-deals-table">
+                <thead>
+                  <tr>
+                    <th>Deal No</th><th>Date</th><th>Party</th><th>Factory</th><th>Grade</th>
+                    <th>Buckets</th><th>KG</th><th>Factory Rate</th><th>Comm/KG</th><th>Party Rate</th>
+                    <th>Purchase</th><th>Sale</th><th>Profit</th><th>Status</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${deals.length ? deals.map((d) => renderRecentDealRowsModern(d)).join('') : '<tr><td colspan="15" class="empty">No deals found. Adjust filters or create a new deal.</td></tr>'}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="5">Total</td>
+                    <td>${fmtNum(totals.bucket, 2)}</td>
+                    <td>${fmtNum(totals.kg, 3)}</td>
+                    <td colspan="3"></td>
+                    <td>${fmtMoney(totals.purchase)}</td>
+                    <td>${fmtMoney(totals.sale)}</td>
+                    <td>${fmtMoney(totals.profit)}</td>
+                    <td colspan="2"></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </section>
+
+          <section class="recent-pagination">
+            <span>Showing ${rangeStart} to ${deals.length} of ${deals.length} deals</span>
+            <div class="recent-page-controls">
+              <button type="button" disabled>Prev</button>
+              <button type="button" class="active">1</button>
+              <button type="button" disabled>Next</button>
+            </div>
+            <label>Rows per page <select><option>10</option><option>25</option><option>50</option></select></label>
+          </section>
+        </main>
       </div>
-      <div class="table-totals">
-        <span>Total Bucket: ${fmtNum(totals.bucket, 2)}</span>
-        <span>Total KG: ${fmtNum(totals.kg, 3)}</span>
-        <span>Purchase: ${fmtMoney(totals.purchase)}</span>
-        <span>Sale: ${fmtMoney(totals.sale)}</span>
-        <span>Profit: ${fmtMoney(totals.profit)}</span>
-        <span>Commission: ${fmtMoney(totals.commission)}</span>
-      </div>
-    </section>`;
+    </div>`;
 
   const applyFilters = () => {
     dealFilters = {
       search: container.querySelector('#dealSearch').value,
       dateFrom: container.querySelector('#dealFrom').value,
       dateTo: container.querySelector('#dealTo').value,
+      factoryId: container.querySelector('#dealFactory').value || undefined,
+      grade: container.querySelector('#dealGrade').value || undefined,
       partyId: container.querySelector('#dealParty').value || undefined
+    };
+    renderRecentDeals(container);
+  };
+
+  const resetFilters = () => {
+    dealFilters = {
+      dateFrom: '',
+      dateTo: today()
     };
     renderRecentDeals(container);
   };
@@ -509,10 +806,13 @@ export function renderRecentDeals(container) {
   container.querySelector('#dealSearch').addEventListener('input', applyFilters);
   container.querySelector('#dealFrom').addEventListener('change', applyFilters);
   container.querySelector('#dealTo').addEventListener('change', applyFilters);
+  container.querySelector('#dealFactory').addEventListener('change', applyFilters);
+  container.querySelector('#dealGrade').addEventListener('change', applyFilters);
   container.querySelector('#dealParty').addEventListener('change', applyFilters);
+  container.querySelector('#searchBtn').addEventListener('click', applyFilters);
+  container.querySelector('#resetBtn').addEventListener('click', resetFilters);
 
   container.querySelector('#exportDealsExcel').addEventListener('click', () => exportDealsExcel(deals, 'recent-deals'));
-  container.querySelector('#exportDealsPdf').addEventListener('click', () => printDealsPdf('Recent Deals', deals, totals));
 
   container.querySelectorAll('[data-edit]').forEach((b) => {
     b.addEventListener('click', () => navigate(ROUTES.newDeal, { id: b.dataset.edit }));
