@@ -656,24 +656,27 @@ export function renderRecentDeals(container) {
 
   container.innerHTML = `
     <div class="recent-deals-page">
-      <section class="recent-toolbar-card">
-        <div class="recent-toolbar-inner">
-          <div class="toolbar-group toolbar-search">
+      <section class="recent-toolbar">
+        <div class="toolbar-grid">
+          <div class="toolbar-item toolbar-search">
             <div class="recent-search-wrap">
               <input type="search" id="dealSearch" placeholder="Search deals, party, factory, grade..." value="${esc(dealFilters.search || '')}" />
               <span class="recent-search-icon" aria-hidden="true">Search</span>
             </div>
           </div>
-          <div class="toolbar-group toolbar-dates">
-            <label class="toolbar-label">From<input type="date" id="dealFrom" value="${dealFilters.dateFrom || ''}" /></label>
-            <label class="toolbar-label">To<input type="date" id="dealTo" value="${dealFilters.dateTo || today()}" /></label>
+
+          <div class="toolbar-item toolbar-dates">
+            <label>From<input type="date" id="dealFrom" value="${dealFilters.dateFrom || ''}" /></label>
+            <label>To<input type="date" id="dealTo" value="${dealFilters.dateTo || today()}" /></label>
           </div>
-          <div class="toolbar-group toolbar-selects">
+
+          <div class="toolbar-item toolbar-filters">
             <select id="dealParty"><option value="">All Parties</option>${partyOpts}</select>
             <select id="dealFactory"><option value="">All Factories</option>${factoryOpts}</select>
             <select id="dealGrade"><option value="">All Grades</option>${gradeOpts}</select>
           </div>
-          <div class="toolbar-group toolbar-actions">
+
+          <div class="toolbar-item toolbar-actions">
             <button type="button" class="btn btn-primary" id="searchBtn">Search</button>
             <button type="button" class="btn btn-secondary" id="resetBtn">Reset</button>
             <button type="button" class="btn btn-secondary" id="exportDealsExcel">Excel Export</button>
@@ -693,8 +696,8 @@ export function renderRecentDeals(container) {
         <div class="kpi-card"><div class="kpi-icon">🏭</div><div class="kpi-label">Outstanding Factory</div><div class="kpi-value">${fmtMoney(metrics.outstandingFactory)}</div></div>
       </section>
 
-      <main class="recent-table-area">
-        <section class="tableBox recent-table-card compact">
+      <section class="recent-table-area">
+        <div class="tableBox recent-table-card compact">
           <div class="tableResponsive recent-table-wrap">
             <table class="recent-deals-table">
               <thead>
@@ -721,9 +724,9 @@ export function renderRecentDeals(container) {
               </tfoot>
             </table>
           </div>
-        </section>
+        </div>
 
-        <section class="recent-pagination">
+        <div class="recent-pagination">
           <span>Showing ${rangeStart} to ${deals.length} of ${deals.length} deals</span>
           <div class="recent-page-controls">
             <button type="button" disabled>Prev</button>
@@ -731,8 +734,8 @@ export function renderRecentDeals(container) {
             <button type="button" disabled>Next</button>
           </div>
           <label>Rows per page <select><option>10</option><option>25</option><option>50</option></select></label>
-        </section>
-      </main>
+        </div>
+      </section>
     </div>`;
 
   const applyFilters = () => {
