@@ -1956,7 +1956,8 @@ input::placeholder {
   width: 100%;
   max-width: none;
   min-width: 0;
-  flex: 1;
+  flex: unset;
+  display: block;
 }
 
 .recent-today-card {
@@ -2048,6 +2049,7 @@ input::placeholder {
   overflow-x: auto; /* allow horizontal scroll when table wider than container */
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
+  padding-bottom: 10px;
 }
 
 .recent-deals-table {
