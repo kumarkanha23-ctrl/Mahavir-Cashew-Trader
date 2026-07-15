@@ -660,40 +660,41 @@ export function renderRecentDeals(container) {
         <div class="toolbar-grid">
           <div class="toolbar-item toolbar-search">
             <div class="recent-search-wrap">
-              <input type="search" id="dealSearch" placeholder="Search deals, party, factory, grade..." value="${esc(dealFilters.search || '')}" />
-              <span class="recent-search-icon" aria-hidden="true">Search</span>
+              <input type="search" id="dealSearch" placeholder="Search Deal..." value="${esc(dealFilters.search || '')}" />
+              <span class="recent-search-icon" aria-hidden="true">🔍</span>
             </div>
           </div>
 
           <div class="toolbar-item toolbar-dates">
-            <label>From<input type="date" id="dealFrom" value="${dealFilters.dateFrom || ''}" /></label>
-            <label>To<input type="date" id="dealTo" value="${dealFilters.dateTo || today()}" /></label>
+            <label class="toolbar-label">From Date<input type="date" id="dealFrom" value="${dealFilters.dateFrom || ''}" /></label>
+            <label class="toolbar-label">To Date<input type="date" id="dealTo" value="${dealFilters.dateTo || today()}" /></label>
           </div>
 
           <div class="toolbar-item toolbar-filters">
-            <select id="dealParty"><option value="">All Parties</option>${partyOpts}</select>
-            <select id="dealFactory"><option value="">All Factories</option>${factoryOpts}</select>
-            <select id="dealGrade"><option value="">All Grades</option>${gradeOpts}</select>
+            <div class="filter-control"><label>Party<select id="dealParty"><option value="">All Parties</option>${partyOpts}</select></label></div>
+            <div class="filter-control"><label>Factory<select id="dealFactory"><option value="">All Factories</option>${factoryOpts}</select></label></div>
+            <div class="filter-control"><label>Grade<select id="dealGrade"><option value="">All Grades</option>${gradeOpts}</select></label></div>
           </div>
 
           <div class="toolbar-item toolbar-actions">
             <button type="button" class="btn btn-primary" id="searchBtn">Search</button>
             <button type="button" class="btn btn-secondary" id="resetBtn">Reset</button>
-            <button type="button" class="btn btn-secondary" id="exportDealsExcel">Excel Export</button>
-            <button type="button" class="btn btn-secondary" disabled>PDF Export</button>
-            <button type="button" class="btn btn-secondary" disabled>Column Settings</button>
+            <button type="button" class="btn btn-secondary" id="exportDealsExcel">Excel</button>
+            <button type="button" class="btn btn-secondary" disabled>PDF</button>
+            <button type="button" class="btn btn-secondary" disabled>Columns</button>
           </div>
         </div>
       </section>
 
       <section class="recent-kpi-bar">
-        <div class="kpi-card"><div class="kpi-icon">➕</div><div class="kpi-label">Total Deals</div><div class="kpi-value">${metrics.totalDeals}</div></div>
+        <div class="kpi-card"><div class="kpi-icon">📊</div><div class="kpi-label">Total Deals</div><div class="kpi-value">${metrics.totalDeals}</div></div>
         <div class="kpi-card"><div class="kpi-icon">⚖️</div><div class="kpi-label">Total KG</div><div class="kpi-value">${fmtNum(metrics.totalKg, 3)} KG</div></div>
         <div class="kpi-card"><div class="kpi-icon">🧾</div><div class="kpi-label">Purchase</div><div class="kpi-value">${fmtMoney(metrics.totalPurchase)}</div></div>
         <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-label">Sale</div><div class="kpi-value">${fmtMoney(metrics.totalSale)}</div></div>
         <div class="kpi-card"><div class="kpi-icon">📈</div><div class="kpi-label">Profit</div><div class="kpi-value">${fmtMoney(metrics.totalProfit)}</div></div>
         <div class="kpi-card"><div class="kpi-icon">👤</div><div class="kpi-label">Outstanding Party</div><div class="kpi-value">${fmtMoney(metrics.outstandingParty)}</div></div>
         <div class="kpi-card"><div class="kpi-icon">🏭</div><div class="kpi-label">Outstanding Factory</div><div class="kpi-value">${fmtMoney(metrics.outstandingFactory)}</div></div>
+        <div class="kpi-card"><div class="kpi-icon">💼</div><div class="kpi-label">Commission</div><div class="kpi-value">${fmtMoney(metrics.totalCommission)}</div></div>
       </section>
 
       <section class="recent-table-area">
@@ -703,7 +704,7 @@ export function renderRecentDeals(container) {
               <thead>
                 <tr>
                   <th>Deal No</th><th>Date</th><th>Party</th><th>Factory</th><th>Grade</th>
-                  <th>Buckets</th><th>KG</th><th>Factory Rate</th><th>Comm/KG</th><th>Party Rate</th>
+                  <th>Buckets</th><th>KG</th><th>Factory Rate</th><th>Commission</th><th>Party Rate</th>
                   <th>Purchase</th><th>Sale</th><th>Profit</th><th>Status</th><th>Actions</th>
                 </tr>
               </thead>
@@ -715,7 +716,8 @@ export function renderRecentDeals(container) {
                   <td colspan="5">Total</td>
                   <td>${fmtNum(totals.bucket, 2)}</td>
                   <td>${fmtNum(totals.kg, 3)}</td>
-                  <td colspan="3"></td>
+                  <td colspan="2"></td>
+                  <td></td>
                   <td>${fmtMoney(totals.purchase)}</td>
                   <td>${fmtMoney(totals.sale)}</td>
                   <td>${fmtMoney(totals.profit)}</td>
@@ -727,13 +729,13 @@ export function renderRecentDeals(container) {
         </div>
 
         <div class="recent-pagination">
-          <span>Showing ${rangeStart} to ${deals.length} of ${deals.length} deals</span>
+          <span class="pagination-summary">Showing ${rangeStart} to ${deals.length} of ${deals.length} records</span>
           <div class="recent-page-controls">
             <button type="button" disabled>Prev</button>
             <button type="button" class="active">1</button>
             <button type="button" disabled>Next</button>
           </div>
-          <label>Rows per page <select><option>10</option><option>25</option><option>50</option></select></label>
+          <label>Rows per page<select><option>10</option><option>25</option><option>50</option></select></label>
         </div>
       </section>
     </div>`;
