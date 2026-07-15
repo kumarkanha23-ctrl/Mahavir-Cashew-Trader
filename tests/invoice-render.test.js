@@ -29,6 +29,14 @@ function test() {
   expectContains(source, 'waitForPdfRender');
   expectContains(source, 'document.fonts.ready');
   expectContains(source, 'document.body.appendChild(wrapper)');
+  expectContains(source, 'scrollWidth');
+  expectContains(source, 'scrollHeight');
+  expectContains(source, 'scale: 2');
+  expectContains(source, "querySelector('.pdf-page')");
+  expectContains(source, 'width: 186mm');
+  expectContains(source, 'padding: 10mm');
+  expectContains(source, 'overflow-x: hidden');
+  expectContains(source, 'img, svg');
   expectContains(appSource, "pdfCenter: 'pdf-center'");
   expectContains(appSource, "label: 'PDF Center'");
   expectNotContains(dealsSource, 'Party PDF');

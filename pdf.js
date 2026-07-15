@@ -5,8 +5,8 @@ const PRINT_STYLE = `
   * { box-sizing: border-box; }
   html, body { width: 100%; margin: 0; padding: 0; overflow-x: hidden; }
   body { font-family: 'Segoe UI', Poppins, Arial, sans-serif; background: #f3f4f6; color: #1f2937; }
-  .pdf-shell { width: 210mm; max-width: 210mm; margin: 0 auto; padding: 0; box-sizing: border-box; }
-  .pdf-page { width: 190mm; max-width: 190mm; min-height: 277mm; margin: 0 auto; padding: 10mm; background: #fff; overflow: hidden; border-radius: 12px; box-sizing: border-box; overflow-wrap: anywhere; word-break: break-word; }
+  .pdf-shell { width: 100%; max-width: 210mm; margin: 0 auto; padding: 0; box-sizing: border-box; overflow-x: hidden; }
+  .pdf-page { width: 186mm; max-width: 100%; min-height: 277mm; margin: 0 auto; padding: 10mm; background: #fff; overflow: hidden; overflow-x: hidden; border-radius: 12px; box-sizing: border-box; overflow-wrap: anywhere; word-break: break-word; }
   .brand { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 2px solid #166534; page-break-inside: avoid; break-inside: avoid; }
   .brand h1 { margin: 0; font-size: 24px; color: #166534; }
   .brand .badge { padding: 6px 10px; border-radius: 999px; background: #f0fdf4; color: #166534; font-size: 12px; font-weight: 700; text-transform: uppercase; }
@@ -17,7 +17,7 @@ const PRINT_STYLE = `
   .card { border: 1px solid #e5e7eb; padding: 12px; border-radius: 10px; background: #fafafa; page-break-inside: avoid; break-inside: avoid; }
   .card h3 { margin: 0 0 8px 0; color: #166534; font-size: 14px; }
   .card p { margin: 4px 0; font-size: 13px; overflow-wrap: anywhere; word-break: break-word; }
-  table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  table { width: 100%; max-width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
   th, td, tr { page-break-inside: avoid; break-inside: avoid; }
   th { background: #166534; color: #fff; padding: 10px 8px; text-align: left; }
   td { padding: 8px; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; word-break: break-word; }
@@ -30,13 +30,16 @@ const PRINT_STYLE = `
   .note { margin-top: 14px; padding: 10px 12px; border-left: 4px solid #166534; background: #f9fafb; font-size: 13px; overflow-wrap: anywhere; word-break: break-word; }
   .muted { color: #6b7280; }
   .signature { margin-top: 24px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  img, svg { display: block; max-width: 100%; width: auto; height: auto; }
+  .logo-box { max-width: 100%; }
+  .logo-badge { flex: 0 0 auto; }
   .signature-box { flex: 1; min-width: 0; border-top: 1px solid #cbd5e1; padding-top: 8px; font-size: 12px; color: #475569; overflow-wrap: anywhere; }
   .footer { margin-top: 20px; font-size: 12px; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 10px; overflow-wrap: anywhere; }
   @page { size: A4; margin: 0; }
   @media print {
     body { background: #fff; }
     .pdf-shell { padding: 0; width: 210mm; max-width: 210mm; }
-    .pdf-page { box-shadow: none; border-radius: 0; width: 190mm; max-width: 190mm; padding: 10mm; }
+    .pdf-page { box-shadow: none; border-radius: 0; width: 186mm; max-width: 186mm; padding: 10mm; }
   }
   @media (max-width: 700px) {
     .grid { grid-template-columns: 1fr; }
@@ -126,18 +129,19 @@ async function createPdfBlobFromHtml(htmlContent, options = {}) {
   wrapper.appendChild(printable);
   document.body.appendChild(wrapper);
   const invoiceElement = printable.querySelector('.pdf-page') || printable;
+  invoiceElement.style.maxWidth = '100%';
+  invoiceElement.style.overflowX = 'hidden';
   try {
     await ensureHtml2Pdf();
     await waitForPdfRender(invoiceElement);
-    const rect = invoiceElement.getBoundingClientRect();
-    const targetWidth = Math.ceil(rect.width);
-    const targetHeight = Math.ceil(rect.height);
+    const targetWidth = Math.max(1, Math.min(Math.ceil(invoiceElement.scrollWidth || 1), Math.ceil(210 * 3.7795275591)));
+    const targetHeight = Math.max(1, Math.ceil(invoiceElement.scrollHeight || 1));
     const opt = {
       margin: [0, 0, 0, 0],
       filename: fileName,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: {
-        scale: 1.5,
+        scale: 2,
         useCORS: true,
         letterRendering: true,
         logging: false,

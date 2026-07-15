@@ -1368,6 +1368,73 @@ function updateSyncBadge() {
   }
 }
 
+function renderHeaderControls() {
+  const searchInput = document.getElementById('globalSearchInput');
+  const searchResults = document.getElementById('globalSearchResults');
+  const notificationsBtn = document.getElementById('notificationsBtn');
+  const notificationsPanel = document.getElementById('notificationsPanel');
+  if (!searchInput || !searchResults || !notificationsBtn || !notificationsPanel) return;
+
+  const snapshot = getState();
+  const metrics = dashboardMetrics();
+  const reminderItems = [
+    { label: 'Outstanding parties', value: fmtMoney(metrics.outstandingParty) },
+    { label: 'Outstanding factories', value: fmtMoney(metrics.outstandingFactory) },
+    { label: 'Recent deals', value: String(snapshot.deals.length) },
+    { label: 'Payments tracked', value: String(snapshot.payments.length) }
+  ];
+  notificationsPanel.innerHTML = `
+    <div class="panel-title">Workspace Pulse</div>
+    <div class="panel-list">
+      ${reminderItems.map((item) => `<div class="panel-item"><span>${esc(item.label)}</span><strong>${esc(item.value)}</strong></div>`).join('')}
+    </div>
+  `;
+
+  searchInput.oninput = (event) => {
+    const query = String(event.target.value || '').trim().toLowerCase();
+    if (!query) {
+      searchResults.classList.add('hidden');
+      searchResults.innerHTML = '';
+      return;
+    }
+
+    const deals = (snapshot.deals || []).map(normalizeDeal).filter((deal) => [deal.dealNo, deal.partyName, deal.factoryName, deal.remarks, ...deal.grades.map((g) => g.grade)].join(' ').toLowerCase().includes(query)).slice(0, 5);
+    const parties = (snapshot.parties || []).filter((party) => String(party.name || '').toLowerCase().includes(query)).slice(0, 4);
+    const factories = (snapshot.factories || []).filter((factory) => String(factory.name || '').toLowerCase().includes(query)).slice(0, 4);
+    const items = [
+      ...deals.map((deal) => ({ title: deal.dealNo, subtitle: `${deal.partyName} → ${deal.factoryName}`, route: ROUTES.recentDeals })),
+      ...parties.map((party) => ({ title: party.name, subtitle: 'Party profile', route: ROUTES.partyLedger })),
+      ...factories.map((factory) => ({ title: factory.name, subtitle: 'Factory profile', route: ROUTES.factoryLedger }))
+    ];
+
+    if (!items.length) {
+      searchResults.innerHTML = '<div class="search-empty">No matches yet.</div>';
+      searchResults.classList.remove('hidden');
+      return;
+    }
+
+    searchResults.innerHTML = items.map((item) => `
+      <button type="button" class="search-result" data-route="${item.route}">
+        <strong>${esc(item.title)}</strong>
+        <span>${esc(item.subtitle)}</span>
+      </button>
+    `).join('');
+    searchResults.querySelectorAll('[data-route]').forEach((button) => {
+      button.addEventListener('click', () => {
+        navigate(button.getAttribute('data-route'));
+        searchResults.classList.add('hidden');
+        searchInput.value = '';
+      });
+    });
+    searchResults.classList.remove('hidden');
+  };
+
+  notificationsBtn.onclick = () => {
+    notificationsPanel.classList.toggle('hidden');
+    searchResults.classList.add('hidden');
+  };
+}
+
 function render() {
   if (!isAuthenticated()) return;
 
@@ -1383,6 +1450,7 @@ function render() {
   document.getElementById('pageHeading').textContent = routeParams.id ? 'Edit Deal' : (TITLES[currentRoute] || APP_NAME);
   renderNav();
   updateSyncBadge();
+  renderHeaderControls();
   document.body.classList.remove('sidebar-open');
 
   switch (currentRoute) {

@@ -38,6 +38,16 @@
           <h1 class="page-heading" id="pageHeading">Dashboard</h1>
         </div>
         <div class="header-right">
+          <div class="search-shell">
+            <span class="search-icon" aria-hidden="true">🔎</span>
+            <input type="text" id="globalSearchInput" class="search-input" placeholder="Global search" />
+            <div id="globalSearchResults" class="search-results hidden"></div>
+          </div>
+          <button type="button" class="icon-btn" id="notificationsBtn" aria-label="Notifications">
+            <span aria-hidden="true">🔔</span>
+            <span class="notif-dot"></span>
+          </button>
+          <div id="notificationsPanel" class="header-panel hidden"></div>
           <span class="header-badge header-badge-synced" id="syncBadge">Synced</span>
           <span class="header-user" id="userEmail"></span>
           <button type="button" class="btn btn-secondary btn-logout" id="logoutBtn">Logout</button>
