@@ -1,6 +1,6 @@
 import {
   dashboardMetrics, filterDeals, fmtDate, fmtMoney, fmtNum, esc, getState, getDealGradeLabel,
-  exportBackupFile, getLastBackupInfo, toast
+  exportBackupFile, getLastBackupInfo, toast, today, getUserProfile, ROLE_LABELS
 } from './app.js';
 
 export function renderDashboard(container) {
@@ -9,27 +9,92 @@ export function renderDashboard(container) {
   const last = getLastBackupInfo();
   const state = getState();
   const companyName = state.settings.companyName || 'Mahavir Cashew Trader';
-  const recentActivities = recent.slice(0, 6).map((d) => `
-    <li class="activity-item">
+  const profile = getUserProfile();
+  const userDisplay = profile?.role ? (ROLE_LABELS[profile.role] || 'Admin') : 'Admin';
+  const backupLabel = last ? `${esc(fmtDate(last.date))} • ${esc(last.time)}` : 'No backup yet';
+  const completedPercent = Math.max(0, Math.min(100, Math.round((m.totalSale > 0 ? 100 - (m.outstandingParty / m.totalSale) * 100 : 100))));
+  const pendingPercent = 100 - completedPercent;
+
+  const recentActivities = recent.slice(0, 5).map((d, index) => `
+    <li class="timeline-item">
+      <span class="timeline-dot"></span>
       <div>
-        <strong>${esc(d.dealNo)}</strong>
-        <span>${esc(d.partyName)} • ${esc(d.factoryName)}</span>
+        <strong>${index === 0 ? 'New Deal' : index === 1 ? 'Party Update' : 'Deal Activity'}</strong>
+        <span>${esc(d.dealNo)} • ${esc(d.partyName || '—')}</span>
       </div>
       <em>${fmtMoney(d.totalSale)}</em>
     </li>`).join('');
-  const topParties = (state.parties || []).slice(0, 6).map((party) => `
-    <li class="stack-item">
-      <span>${esc(party.name || 'Party')}</span>
-      <strong>${esc(party.phone || '—')}</strong>
-    </li>`).join('');
-  const topFactories = (state.factories || []).slice(0, 6).map((factory) => `
-    <li class="stack-item">
-      <span>${esc(factory.name || 'Factory')}</span>
-      <strong>${esc(factory.phone || '—')}</strong>
-    </li>`).join('');
+
+  const partyMetrics = (state.parties || []).map((party) => {
+    const partyDeals = recent.filter((d) => d.partyName === party.name || d.partyId === party.id);
+    const amount = partyDeals.reduce((sum, d) => sum + d.totalSale, 0);
+    const dealCount = partyDeals.length;
+    return { party, amount, dealCount };
+  }).sort((a, b) => b.amount - a.amount).slice(0, 4);
+
+  const factoryMetrics = (state.factories || []).map((factory) => {
+    const factoryDeals = recent.filter((d) => d.factoryName === factory.name || d.factoryId === factory.id);
+    const amount = factoryDeals.reduce((sum, d) => sum + d.totalPurchase, 0);
+    const dealCount = factoryDeals.length;
+    return { factory, amount, dealCount };
+  }).sort((a, b) => b.amount - a.amount).slice(0, 4);
+
+  const topParties = partyMetrics.map(({ party, amount, dealCount }) => {
+    const progress = partyMetrics.length ? Math.max(20, Math.round((amount / Math.max(1, partyMetrics[0].amount)) * 100)) : 0;
+    return `
+      <li class="stack-card">
+        <div class="stack-card-top">
+          <div>
+            <strong>${esc(party.name || 'Party')}</strong>
+            <span>${dealCount} deals</span>
+          </div>
+          <em>${fmtMoney(amount)}</em>
+        </div>
+        <div class="progress-bar"><i style="width:${progress}%"></i></div>
+      </li>`;
+  }).join('');
+
+  const topFactories = factoryMetrics.map(({ factory, amount, dealCount }) => {
+    const progress = factoryMetrics.length ? Math.max(20, Math.round((amount / Math.max(1, factoryMetrics[0].amount)) * 100)) : 0;
+    return `
+      <li class="stack-card">
+        <div class="stack-card-top">
+          <div>
+            <strong>${esc(factory.name || 'Factory')}</strong>
+            <span>${dealCount} deals</span>
+          </div>
+          <em>${fmtMoney(amount)}</em>
+        </div>
+        <div class="progress-bar"><i style="width:${progress}%"></i></div>
+      </li>`;
+  }).join('');
+
+  const kpiCards = [
+    { label: 'Total Deals', value: m.totalDeals, icon: '📊', trend: '+12%' },
+    { label: 'Total KG', value: `${fmtNum(m.totalKg, 3)} KG`, icon: '⚖️', trend: '+8%' },
+    { label: 'Purchase', value: fmtMoney(m.totalPurchase), icon: '🧾', trend: '+6%' },
+    { label: 'Sale', value: fmtMoney(m.totalSale), icon: '💰', trend: '+9%' },
+    { label: 'Profit', value: fmtMoney(m.totalProfit), icon: '📈', trend: '+11%' },
+    { label: 'Commission', value: fmtMoney(m.totalCommission), icon: '💼', trend: '+4%' },
+    { label: 'Outstanding Party', value: fmtMoney(m.outstandingParty), icon: '👤', trend: 'Pending' },
+    { label: 'Outstanding Factory', value: fmtMoney(m.outstandingFactory), icon: '🏭', trend: 'Pending' }
+  ].map((card) => `
+    <article class="kpi-card premium-kpi-card">
+      <div class="kpi-card-top">
+        <div class="kpi-icon">${card.icon}</div>
+        <span class="kpi-pill">${card.trend}</span>
+      </div>
+      <div class="kpi-card-body">
+        <h4>${card.label}</h4>
+        <strong>${card.value}</strong>
+      </div>
+      <svg class="kpi-trend-line" viewBox="0 0 80 32" preserveAspectRatio="none">
+        <path d="M0 24C8 18 16 16 24 17C34 18 38 10 47 9C58 8 67 6 80 4" />
+      </svg>
+    </article>`).join('');
 
   container.innerHTML = `
-    <section class="dashboard-hero">
+    <section class="dashboard-hero premium-dashboard-hero">
       <div class="hero-copy">
         <span class="hero-pill">Premium ERP Workspace</span>
         <h2>Welcome back to ${esc(companyName)}</h2>
@@ -44,75 +109,73 @@ export function renderDashboard(container) {
         </div>
         ${last ? `<div class="hero-meta">Last backup: ${esc(fmtDate(last.date))} • ${esc(last.time)} • ${esc(last.sizeLabel)}</div>` : '<div class="hero-meta">No backup taken yet</div>'}
       </div>
-      <div class="hero-stats">
-        <div class="hero-stat"><span>Today's Deals</span><strong>${recent.length}</strong></div>
-        <div class="hero-stat"><span>Units</span><strong>${fmtNum(m.totalKg, 3)} KG</strong></div>
-        <div class="hero-stat"><span>Profit</span><strong>${fmtMoney(m.totalProfit)}</strong></div>
+      <div class="hero-visual-card">
+        <div class="hero-ring">
+          <strong>${recent.length}</strong>
+          <span>Live deals</span>
+        </div>
       </div>
     </section>
 
-    <section class="dashboard-grid">
-      <div class="dashboard-panel">
+    <section class="status-strip">
+      <article class="status-card"><span>Today's Date</span><strong>${fmtDate(today())}</strong></article>
+      <article class="status-card"><span>Live Sync</span><strong>Online</strong></article>
+      <article class="status-card"><span>Last Backup</span><strong>${backupLabel}</strong></article>
+      <article class="status-card"><span>Logged User</span><strong>${esc(userDisplay)}</strong></article>
+    </section>
+
+    <section class="kpi-grid">${kpiCards}</section>
+
+    <section class="dashboard-grid premium-grid">
+      <article class="dashboard-panel analytics-panel">
         <div class="panel-head">
-          <h3>Performance overview</h3>
+          <h3>Payment Pulse</h3>
           <span class="panel-badge">Live</span>
         </div>
-        <div class="metric-grid">
-          <div class="metric-card"><h4>Total Deals</h4><h2>${m.totalDeals}</h2></div>
-          <div class="metric-card"><h4>Total KG</h4><h2>${fmtNum(m.totalKg, 3)}</h2></div>
-          <div class="metric-card"><h4>Purchase</h4><h2>${fmtMoney(m.totalPurchase)}</h2></div>
-          <div class="metric-card"><h4>Sale</h4><h2>${fmtMoney(m.totalSale)}</h2></div>
-          <div class="metric-card"><h4>Profit</h4><h2>${fmtMoney(m.totalProfit)}</h2></div>
-          <div class="metric-card"><h4>Commission</h4><h2>${fmtMoney(m.totalCommission)}</h2></div>
-          <div class="metric-card highlight"><h4>Outstanding Party</h4><h2>${fmtMoney(m.outstandingParty)}</h2></div>
-          <div class="metric-card highlight-warn"><h4>Outstanding Factory</h4><h2>${fmtMoney(m.outstandingFactory)}</h2></div>
+        <div class="payment-pulse-wrap">
+          <div class="donut-chart" style="--value:${completedPercent};">
+            <div class="donut-inner">
+              <strong>${completedPercent}%</strong>
+              <span>Completed</span>
+            </div>
+          </div>
+          <div class="pulse-stats">
+            <div class="pulse-stat"><span>Completed</span><strong>${completedPercent}%</strong></div>
+            <div class="pulse-stat"><span>Pending</span><strong>${pendingPercent}%</strong></div>
+            <div class="pulse-stat"><span>Total Payments</span><strong>${state.payments.length}</strong></div>
+          </div>
         </div>
-      </div>
-      <div class="dashboard-panel">
+      </article>
+
+      <article class="dashboard-panel">
         <div class="panel-head">
-          <h3>Payment pulse</h3>
-          <span class="panel-badge muted">Overview</span>
+          <h3>Recent Activity</h3>
+          <span class="panel-badge muted">Timeline</span>
         </div>
-        <div class="mini-chart">
-          <div class="chart-row"><span>Parties</span><div class="bar"><i style="width:${Math.min(100, Math.round((m.outstandingParty / Math.max(1, m.totalSale)) * 100))}%"></i></div></div>
-          <div class="chart-row"><span>Factories</span><div class="bar"><i style="width:${Math.min(100, Math.round((m.outstandingFactory / Math.max(1, m.totalPurchase)) * 100))}%"></i></div></div>
-          <div class="chart-row"><span>Commission</span><div class="bar"><i style="width:${Math.min(100, Math.round((m.totalCommission / Math.max(1, m.totalSale)) * 100))}%"></i></div></div>
-        </div>
-        <div class="info-strip">
-          <div><strong>${state.parties.length}</strong><span>Parties</span></div>
-          <div><strong>${state.factories.length}</strong><span>Factories</span></div>
-          <div><strong>${state.payments.length}</strong><span>Payments</span></div>
-        </div>
-      </div>
+        <ul class="timeline-list">${recentActivities || '<li class="timeline-item"><span class="timeline-dot"></span><div><strong>No activity yet</strong><span>Create your first deal to start the timeline.</span></div></li>'}</ul>
+      </article>
     </section>
 
-    <section class="dashboard-grid secondary">
-      <div class="dashboard-panel">
+    <section class="dashboard-grid secondary premium-grid">
+      <article class="dashboard-panel">
         <div class="panel-head">
-          <h3>Recent activities</h3>
-          <span class="panel-badge">Latest</span>
-        </div>
-        <ul class="activity-list">${recentActivities || '<li class="activity-item"><span>No recent deals yet</span></li>'}</ul>
-      </div>
-      <div class="dashboard-panel">
-        <div class="panel-head">
-          <h3>Top parties</h3>
+          <h3>Top Parties</h3>
           <span class="panel-badge">Priority</span>
         </div>
-        <ul class="stack-list">${topParties || '<li class="stack-item"><span>No party data yet</span></li>'}</ul>
-      </div>
-      <div class="dashboard-panel">
+        <ul class="stack-list">${topParties || '<li class="stack-card"><div class="stack-card-top"><div><strong>No party data yet</strong><span>Create deals to see party metrics.</span></div></div></li>'}</ul>
+      </article>
+      <article class="dashboard-panel">
         <div class="panel-head">
-          <h3>Top factories</h3>
+          <h3>Top Factories</h3>
           <span class="panel-badge">Priority</span>
         </div>
-        <ul class="stack-list">${topFactories || '<li class="stack-item"><span>No factory data yet</span></li>'}</ul>
-      </div>
+        <ul class="stack-list">${topFactories || '<li class="stack-card"><div class="stack-card-top"><div><strong>No factory data yet</strong><span>Create deals to see factory metrics.</span></div></div></li>'}</ul>
+      </article>
     </section>
 
-    <section class="dashboard-panel wide-panel">
+    <section class="dashboard-panel wide-panel premium-table-card">
       <div class="panel-head">
-        <h3>Recent deals</h3>
+        <h3>Latest Deals</h3>
         <span class="panel-badge">Operations</span>
       </div>
       <div class="tableResponsive">
