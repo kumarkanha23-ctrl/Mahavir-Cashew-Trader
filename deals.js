@@ -621,13 +621,13 @@ function renderRecentDealRowsModern(deal) {
         <div class="deal-total-shell">
           <div class="deal-total-badge">DEAL TOTAL</div>
           <div class="deal-total-grid">
-            <span><strong>Factory Purchase</strong> : ${fmtMoney(d.totalPurchase)}</span>
-            <span><strong>Party Sale</strong> : ${fmtMoney(d.totalSale)}</span>
-            <span><strong>Profit</strong> : ${fmtMoney(d.totalProfit)}</span>
-            <span><strong>Commission</strong> : ${fmtMoney(d.totalCommission)}</span>
-            <span><strong>Buckets</strong> : ${fmtNum(d.totalBucket, 2)}</span>
-            <span><strong>KG</strong> : ${fmtNum(d.totalKg, 3)}</span>
-            <span><strong>Grades</strong> : ${d.grades.length}</span>
+            <span>Factory Purchase : ${fmtMoney(d.totalPurchase)}</span>
+            <span>Party Sale       : ${fmtMoney(d.totalSale)}</span>
+            <span>Profit           : ${fmtMoney(d.totalProfit)}</span>
+            <span>Commission       : ${fmtMoney(d.totalCommission)}</span>
+            <span>Buckets          : ${fmtNum(d.totalBucket, 2)}</span>
+            <span>KG               : ${fmtNum(d.totalKg, 3)}</span>
+            <span>Grades           : ${d.grades.length}</span>
           </div>
         </div>
       </td>

@@ -1862,8 +1862,8 @@ input::placeholder {
 
 .recent-deals-table .deal-total-row .deal-total-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px 18px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 16px;
   width: 100%;
 }
 
@@ -1875,11 +1875,7 @@ input::placeholder {
   color: #f5fff7;
   font-weight: 700;
   white-space: nowrap;
-}
-
-.recent-deals-table .deal-total-row .deal-total-grid strong {
-  font-weight: 800;
-  color: #ffffff;
+  font-family: Consolas, monospace;
 }
 
 .recent-deals-table .deal-total-row td {
