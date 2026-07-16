@@ -1823,6 +1823,69 @@ input::placeholder {
   background: #eef7ec;
 }
 
+.recent-deals-table tbody tr.deal-total-row td {
+  background: linear-gradient(135deg, #166534 0%, #1f7a43 100%);
+  color: #ffffff;
+  font-weight: 800;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+}
+
+.recent-deals-table tbody tr.deal-total-row:hover td {
+  background: linear-gradient(135deg, #166534 0%, #1f7a43 100%);
+}
+
+.recent-deals-table .deal-total-row .deal-total-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.recent-deals-table .deal-total-row .deal-total-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+
+.recent-deals-table .deal-total-row .deal-total-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 18px;
+  width: 100%;
+}
+
+.recent-deals-table .deal-total-row .deal-total-grid span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #f5fff7;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.recent-deals-table .deal-total-row .deal-total-grid strong {
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.recent-deals-table .deal-total-row td {
+  border-radius: 16px;
+}
+
 .recent-deals-table tfoot td {
   background: #f6faf6;
   color: #174a29;

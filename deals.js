@@ -596,28 +596,7 @@ function renderRecentDealRowsModern(deal) {
     <button type="button" class="iconAction editBtn" data-edit="${d.id}" aria-label="Edit deal" title="Edit deal">Edit</button>
     <button type="button" class="iconAction deleteBtn" data-del="${d.id}" aria-label="Delete deal" title="Delete deal">Delete</button>`;
 
-  if (d.grades.length <= 1) {
-    const g = d.grades[0];
-    return `<tr class="recent-deal-row">
-      <td><span class="deal-no-pill">${esc(d.dealNo)}</span></td>
-      <td>${fmtDate(d.date)}</td>
-      <td>${esc(d.partyName)}</td>
-      <td>${esc(d.factoryName)}</td>
-      <td>${esc(g?.grade || '-')}</td>
-      <td>${g?.bucket ?? '-'}</td>
-      <td>${fmtNum(d.totalKg, 3)}</td>
-      <td>${g ? fmtMoney(g.factoryRate) : '-'}</td>
-      <td>${g ? fmtMoney(g.commissionPerKg) : '-'}</td>
-      <td>${g ? fmtMoney(g.partyRate) : '-'}</td>
-      <td>${fmtMoney(d.totalPurchase)}</td>
-      <td>${fmtMoney(d.totalSale)}</td>
-      <td class="profit-cell">${fmtMoney(d.totalProfit)}</td>
-      <td><span class="status-badge completed">Completed</span></td>
-      <td class="actions recent-deal-actions">${actionButtons}</td>
-    </tr>`;
-  }
-
-  return d.grades.map((g, i) => `
+  const gradeRows = d.grades.map((g, i) => `
     <tr class="recent-deal-row grade-sub-row">
       <td>${i === 0 ? `<span class="deal-no-pill">${esc(d.dealNo)}</span>` : ''}</td>
       <td>${i === 0 ? fmtDate(d.date) : ''}</td>
@@ -635,6 +614,26 @@ function renderRecentDealRowsModern(deal) {
       <td>${i === 0 ? '<span class="status-badge completed">Completed</span>' : ''}</td>
       <td class="actions recent-deal-actions">${i === 0 ? actionButtons : ''}</td>
     </tr>`).join('');
+
+  const totalRow = `
+    <tr class="recent-deal-row deal-total-row">
+      <td colspan="15">
+        <div class="deal-total-shell">
+          <div class="deal-total-badge">DEAL TOTAL</div>
+          <div class="deal-total-grid">
+            <span><strong>Factory Purchase</strong> : ${fmtMoney(d.totalPurchase)}</span>
+            <span><strong>Party Sale</strong> : ${fmtMoney(d.totalSale)}</span>
+            <span><strong>Profit</strong> : ${fmtMoney(d.totalProfit)}</span>
+            <span><strong>Commission</strong> : ${fmtMoney(d.totalCommission)}</span>
+            <span><strong>Buckets</strong> : ${fmtNum(d.totalBucket, 2)}</span>
+            <span><strong>KG</strong> : ${fmtNum(d.totalKg, 3)}</span>
+            <span><strong>Grades</strong> : ${d.grades.length}</span>
+          </div>
+        </div>
+      </td>
+    </tr>`;
+
+  return gradeRows + totalRow;
 }
 
 export function renderRecentDeals(container) {
