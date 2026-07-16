@@ -594,16 +594,13 @@ function renderRecentDealRowsModern(deal) {
   const d = normalizeDeal(deal);
   const actionButtons = `
     <button type="button" class="iconAction editBtn" data-edit="${d.id}" aria-label="Edit deal" title="Edit deal">Edit</button>
-    <button type="button" class="iconAction deleteBtn" data-del="${d.id}" aria-label="Delete deal" title="Delete deal">Delete</button>`;
+    <button type="button" class="iconAction deleteBtn" data-del="${d.id}" aria-label="Delete deal" title="Delete deal">Delete</button>
+    <button type="button" class="iconAction detailBtn" aria-label="View details" title="View details">Details</button>`;
 
-  const gradeRows = d.grades.map((g, i) => `
-    <tr class="recent-deal-row grade-sub-row">
-      <td>${i === 0 ? `<span class="deal-no-pill">${esc(d.dealNo)}</span>` : ''}</td>
-      <td>${i === 0 ? fmtDate(d.date) : ''}</td>
-      <td>${i === 0 ? esc(d.partyName) : ''}</td>
-      <td>${i === 0 ? esc(d.factoryName) : ''}</td>
-      <td>${esc(g.grade)}</td>
-      <td>${g.bucket}</td>
+  const gradeRows = d.grades.map((g) => `
+    <tr>
+      <td>${esc(g.grade || '—')}</td>
+      <td>${g.bucket ?? '—'}</td>
       <td>${fmtNum(g.kg, 3)}</td>
       <td>${fmtMoney(g.factoryRate)}</td>
       <td>${fmtMoney(g.commissionPerKg)}</td>
@@ -611,29 +608,67 @@ function renderRecentDealRowsModern(deal) {
       <td>${fmtMoney(g.purchaseAmount)}</td>
       <td>${fmtMoney(g.saleAmount)}</td>
       <td class="profit-cell">${fmtMoney(g.profit)}</td>
-      <td>${i === 0 ? '<span class="status-badge completed">Completed</span>' : ''}</td>
-      <td class="actions recent-deal-actions">${i === 0 ? actionButtons : ''}</td>
     </tr>`).join('');
 
-  const totalRow = `
-    <tr class="recent-deal-row deal-total-row">
-      <td colspan="15">
-        <div class="deal-total-shell">
-          <div class="deal-total-badge">DEAL TOTAL</div>
-          <div class="deal-total-grid">
-            <span>Factory Purchase : ${fmtMoney(d.totalPurchase)}</span>
-            <span>Party Sale       : ${fmtMoney(d.totalSale)}</span>
-            <span>Profit           : ${fmtMoney(d.totalProfit)}</span>
-            <span>Commission       : ${fmtMoney(d.totalCommission)}</span>
-            <span>Buckets          : ${fmtNum(d.totalBucket, 2)}</span>
-            <span>KG               : ${fmtNum(d.totalKg, 3)}</span>
-            <span>Grades           : ${d.grades.length}</span>
+  const summaryCards = [
+    { label: 'Factory Purchase', value: fmtMoney(d.totalPurchase) },
+    { label: 'Party Sale', value: fmtMoney(d.totalSale) },
+    { label: 'Profit', value: fmtMoney(d.totalProfit) },
+    { label: 'Commission', value: fmtMoney(d.totalCommission) },
+    { label: 'Buckets', value: fmtNum(d.totalBucket, 2) },
+    { label: 'KG', value: fmtNum(d.totalKg, 3) },
+    { label: 'Grades', value: d.grades.length }
+  ].map((item) => `
+    <div class="summary-mini-card">
+      <span class="summary-mini-label">${item.label}</span>
+      <span class="summary-mini-value">${item.value}</span>
+    </div>`).join('');
+
+  return `
+    <article class="recent-deal-card">
+      <details class="deal-accordion">
+        <summary class="deal-card-summary">
+          <div class="deal-card-summary-main">
+            <div class="deal-card-title-group">
+              <span class="deal-number-pill">${esc(d.dealNo || '—')}</span>
+              <span class="deal-date-pill">${fmtDate(d.date)}</span>
+            </div>
+            <div class="deal-card-identity">
+              <span>${esc(d.partyName || '—')}</span>
+              <span>${esc(d.factoryName || '—')}</span>
+            </div>
+          </div>
+          <div class="deal-card-summary-side">
+            <span class="status-badge completed">Completed</span>
+            <span class="deal-expand-icon" aria-hidden="true">▾</span>
+          </div>
+        </summary>
+
+        <div class="deal-card-body">
+          <div class="deal-card-subheader">
+            <div class="deal-card-subheader-left">
+              <span class="subheader-label">Deal Overview</span>
+              <span class="subheader-text">Premium grade breakdown and deal summary</span>
+            </div>
+            <div class="deal-card-actions">${actionButtons}</div>
+          </div>
+
+          <div class="deal-grade-shell">
+            <div class="deal-grade-table-wrap">
+              <table class="deal-grade-table">
+                <thead>
+                  <tr>
+                    <th>Grade</th><th>Buckets</th><th>KG</th><th>Factory Rate</th><th>Comm</th><th>Party Rate</th><th>Purchase</th><th>Sale</th><th>Profit</th>
+                  </tr>
+                </thead>
+                <tbody>${gradeRows}</tbody>
+              </table>
+            </div>
+            <div class="deal-summary-grid">${summaryCards}</div>
           </div>
         </div>
-      </td>
-    </tr>`;
-
-  return gradeRows + totalRow;
+      </details>
+    </article>`;
 }
 
 export function renderRecentDeals(container) {
@@ -655,6 +690,19 @@ export function renderRecentDeals(container) {
 
   container.innerHTML = `
     <div class="recent-deals-page">
+      <section class="recent-hero-card">
+        <div class="recent-hero-copy">
+          <div class="recent-hero-eyebrow">ERP Ledger · Premium Overview</div>
+          <h2>Recent Deals</h2>
+          <p>Monitor the latest deal flow, profitability, and outstanding balances with a refined operational view.</p>
+        </div>
+        <div class="recent-hero-badges">
+          <span class="hero-badge hero-badge-primary"><span class="hero-dot"></span> Live Sync</span>
+          <span class="hero-badge">${deals.length} Deals</span>
+          <span class="hero-badge">Updated ${fmtDate(today())}</span>
+        </div>
+      </section>
+
       <section class="recent-toolbar">
         <div class="toolbar-grid">
           <div class="toolbar-item toolbar-search">
@@ -686,56 +734,30 @@ export function renderRecentDeals(container) {
       </section>
 
       <section class="recent-kpi-bar">
-        <div class="kpi-card"><div class="kpi-icon">📊</div><div class="kpi-label">Total Deals</div><div class="kpi-value">${metrics.totalDeals}</div></div>
-        <div class="kpi-card"><div class="kpi-icon">⚖️</div><div class="kpi-label">Total KG</div><div class="kpi-value">${fmtNum(metrics.totalKg, 3)} KG</div></div>
-        <div class="kpi-card"><div class="kpi-icon">🧾</div><div class="kpi-label">Purchase</div><div class="kpi-value">${fmtMoney(metrics.totalPurchase)}</div></div>
-        <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-label">Sale</div><div class="kpi-value">${fmtMoney(metrics.totalSale)}</div></div>
-        <div class="kpi-card"><div class="kpi-icon">📈</div><div class="kpi-label">Profit</div><div class="kpi-value">${fmtMoney(metrics.totalProfit)}</div></div>
-        <div class="kpi-card"><div class="kpi-icon">👤</div><div class="kpi-label">Outstanding Party</div><div class="kpi-value">${fmtMoney(metrics.outstandingParty)}</div></div>
-        <div class="kpi-card"><div class="kpi-icon">🏭</div><div class="kpi-label">Outstanding Factory</div><div class="kpi-value">${fmtMoney(metrics.outstandingFactory)}</div></div>
-        <div class="kpi-card"><div class="kpi-icon">💼</div><div class="kpi-label">Commission</div><div class="kpi-value">${fmtMoney(metrics.totalCommission)}</div></div>
+        <div class="kpi-card"><div class="kpi-icon">📊</div><div class="kpi-label">Total Deals</div><div class="kpi-value">${metrics.totalDeals}</div><div class="kpi-trend positive">Live</div></div>
+        <div class="kpi-card"><div class="kpi-icon">⚖️</div><div class="kpi-label">Total KG</div><div class="kpi-value">${fmtNum(metrics.totalKg, 3)} KG</div><div class="kpi-trend positive">Updated</div></div>
+        <div class="kpi-card"><div class="kpi-icon">🧾</div><div class="kpi-label">Purchase</div><div class="kpi-value">${fmtMoney(metrics.totalPurchase)}</div><div class="kpi-trend neutral">Tracked</div></div>
+        <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-label">Sale</div><div class="kpi-value">${fmtMoney(metrics.totalSale)}</div><div class="kpi-trend positive">Healthy</div></div>
+        <div class="kpi-card"><div class="kpi-icon">📈</div><div class="kpi-label">Profit</div><div class="kpi-value">${fmtMoney(metrics.totalProfit)}</div><div class="kpi-trend positive">Stable</div></div>
+        <div class="kpi-card"><div class="kpi-icon">💼</div><div class="kpi-label">Commission</div><div class="kpi-value">${fmtMoney(metrics.totalCommission)}</div><div class="kpi-trend neutral">Settled</div></div>
+        <div class="kpi-card"><div class="kpi-icon">👤</div><div class="kpi-label">Outstanding Party</div><div class="kpi-value">${fmtMoney(metrics.outstandingParty)}</div><div class="kpi-trend neutral">Pending</div></div>
+        <div class="kpi-card"><div class="kpi-icon">🏭</div><div class="kpi-label">Outstanding Factory</div><div class="kpi-value">${fmtMoney(metrics.outstandingFactory)}</div><div class="kpi-trend neutral">Pending</div></div>
       </section>
 
-      <section class="recent-table-area">
-        <div class="tableBox recent-table-card compact">
-          <div class="tableResponsive recent-table-wrap">
-            <table class="recent-deals-table">
-              <thead>
-                <tr>
-                  <th>Deal No</th><th>Date</th><th>Party</th><th>Factory</th><th>Grade</th>
-                  <th>Buckets</th><th>KG</th><th>Factory Rate</th><th>Commission</th><th>Party Rate</th>
-                  <th>Purchase</th><th>Sale</th><th>Profit</th><th>Status</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${deals.length ? deals.map((d) => renderRecentDealRowsModern(d)).join('') : '<tr><td colspan="15" class="empty">No deals found. Adjust filters or create a new deal.</td></tr>'}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colspan="5">Total</td>
-                  <td>${fmtNum(totals.bucket, 2)}</td>
-                  <td>${fmtNum(totals.kg, 3)}</td>
-                  <td colspan="2"></td>
-                  <td></td>
-                  <td>${fmtMoney(totals.purchase)}</td>
-                  <td>${fmtMoney(totals.sale)}</td>
-                  <td>${fmtMoney(totals.profit)}</td>
-                  <td colspan="2"></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+      <section class="recent-deals-stack-area">
+        <div class="recent-deals-stack">
+          ${deals.length ? deals.map((d) => renderRecentDealRowsModern(d)).join('') : '<div class="empty-state">No deals found. Adjust filters or create a new deal.</div>'}
         </div>
+      </section>
 
-        <div class="recent-pagination">
-          <span class="pagination-summary">Showing ${rangeStart} to ${deals.length} of ${deals.length} records</span>
-          <div class="recent-page-controls">
-            <button type="button" disabled>Prev</button>
-            <button type="button" class="active">1</button>
-            <button type="button" disabled>Next</button>
-          </div>
-          <label>Rows per page<select><option>10</option><option>25</option><option>50</option></select></label>
+      <section class="recent-pagination">
+        <span class="pagination-summary">Showing ${rangeStart} to ${deals.length} of ${deals.length} records</span>
+        <div class="recent-page-controls">
+          <button type="button" disabled>Prev</button>
+          <button type="button" class="active">1</button>
+          <button type="button" disabled>Next</button>
         </div>
+        <label>Rows per page<select><option>10</option><option>25</option><option>50</option></select></label>
       </section>
     </div>`;
 
