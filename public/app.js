@@ -106,6 +106,100 @@ const DEFAULT_SETTINGS = {
   firebaseConfig: null
 };
 
+function normalizeWhatsAppNumber(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const normalized = raw.replace(/[^\d+]/g, '');
+  return normalized;
+}
+
+export function buildWhatsAppMessage(type, deal) {
+  const normalized = normalizeDeal(deal);
+  const title = type === 'PURCHASE'
+    ? '🏭 MAHAVIR CASHEW TRADER\n\nPurchase Confirmed'
+    : '🛒 MAHAVIR CASHEW TRADER\n\nSale Confirmed';
+  const lines = [title, '', `Date: ${normalized.date || '—'}`];
+
+  if (type === 'PURCHASE') {
+    lines.push(`Factory: ${normalized.factoryName || '—'}`);
+  } else {
+    lines.push(`Party: ${normalized.partyName || '—'}`);
+  }
+
+  lines.push('');
+
+  if (type === 'PURCHASE') {
+    lines.push('Grades:');
+    (normalized.grades || []).forEach((g) => {
+      lines.push(`- ${g.grade || '—'} | Buckets: ${fmtNum(g.bucket || 0, 2)} | KG: ${fmtNum(g.kg || 0, 3)} | Factory Rate: ${fmtMoney(g.factoryRate || 0)} | Amount: ${fmtMoney(g.purchaseAmount || 0)}`);
+    });
+    lines.push('');
+    lines.push(`Total Buckets: ${fmtNum(normalized.totalBucket || 0, 2)}`);
+    lines.push(`Total KG: ${fmtNum(normalized.totalKg || 0, 3)}`);
+    lines.push(`Total Purchase: ${fmtMoney(normalized.totalPurchase || 0)}`);
+  } else {
+    lines.push('Grades:');
+    (normalized.grades || []).forEach((g) => {
+      lines.push(`- ${g.grade || '—'} | Buckets: ${fmtNum(g.bucket || 0, 2)} | KG: ${fmtNum(g.kg || 0, 3)} | Party Rate: ${fmtMoney(g.partyRate || 0)} | Amount: ${fmtMoney(g.saleAmount || 0)}`);
+    });
+    lines.push('');
+    lines.push(`Total Buckets: ${fmtNum(normalized.totalBucket || 0, 2)}`);
+    lines.push(`Total KG: ${fmtNum(normalized.totalKg || 0, 3)}`);
+    lines.push(`Total Sale: ${fmtMoney(normalized.totalSale || 0)}`);
+    lines.push(`Profit: ${fmtMoney(normalized.totalProfit || 0)}`);
+    lines.push(`Commission: ${fmtMoney(normalized.totalCommission || 0)}`);
+  }
+
+  return lines.join('\n');
+}
+
+export function buildLedgerWhatsAppMessage(type, entity, report) {
+  const title = type === 'PARTY'
+    ? '👤 MAHAVIR CASHEW TRADER\n\nParty Ledger Summary'
+    : '🏭 MAHAVIR CASHEW TRADER\n\nFactory Ledger Summary';
+  const amountLabel = type === 'PARTY' ? 'Total Sale' : 'Total Purchase';
+  const amountValue = type === 'PARTY' ? (report?.totalSale || 0) : (report?.totalPurchase || 0);
+  return [
+    title,
+    '',
+    `Name: ${entity?.name || '—'}`,
+    `Total KG: ${fmtNum(report?.totalKg || 0, 3)}`,
+    `${amountLabel}: ${fmtMoney(amountValue)}`,
+    `Total Paid: ${fmtMoney(report?.totalPaid || 0)}`,
+    `Outstanding: ${fmtMoney(report?.outstanding || 0)}`
+  ].join('\n');
+}
+
+export function buildRecentDealsWhatsAppMessage(deals = []) {
+  const lines = ['📋 MAHAVIR CASHEW TRADER', '', 'Recent Deals Summary', ''];
+  (deals || []).slice(0, 6).forEach((deal, index) => {
+    const normalized = normalizeDeal(deal);
+    const amount = normalized.type === 'PURCHASE' ? normalized.totalPurchase : normalized.totalSale;
+    lines.push(`${index + 1}. ${normalized.dealNo || '—'} | ${normalized.partyName || '—'} → ${normalized.factoryName || '—'} | ${fmtMoney(amount || 0)}`);
+  });
+  return lines.join('\n');
+}
+
+export function openWhatsApp(numberOrEntity, message) {
+  const number = typeof numberOrEntity === 'string'
+    ? normalizeWhatsAppNumber(numberOrEntity)
+    : normalizeWhatsAppNumber(numberOrEntity?.whatsappNumber || numberOrEntity?.phone || '');
+  const encoded = encodeURIComponent(message || '');
+  const url = number ? `https://wa.me/${number}?text=${encoded}` : `https://wa.me/?text=${encoded}`;
+  const popup = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!popup) {
+    window.location.href = url;
+  }
+}
+
+export function openWhatsAppForDeal(deal, type = deal?.type || 'SALE') {
+  const normalized = normalizeDeal(deal);
+  const entity = type === 'PURCHASE'
+    ? state.factories.find((factory) => factory.id === normalized.factoryId)
+    : state.parties.find((party) => party.id === normalized.partyId);
+  openWhatsApp(entity, buildWhatsAppMessage(type, normalized));
+}
+
 let state = {
   settings: { ...DEFAULT_SETTINGS },
   parties: [],

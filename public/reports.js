@@ -332,15 +332,16 @@ function renderEntityTable(title, items, type) {
       <h2>${title}</h2>
       <div class="tableResponsive">
         <table>
-          <thead><tr><th>Name</th><th>Phone</th><th>Address</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Name</th><th>Phone</th><th>WhatsApp Number</th><th>Address</th><th>Actions</th></tr></thead>
           <tbody>
             ${items.length ? items.map((item) => `
               <tr data-entity="${type}" data-id="${item.id}">
                 <td><input class="inline-input" data-field="name" value="${esc(item.name)}" /></td>
                 <td><input class="inline-input" data-field="phone" value="${esc(item.phone || '')}" /></td>
+                <td><input class="inline-input" data-field="whatsappNumber" value="${esc(item.whatsappNumber || '')}" /></td>
                 <td><input class="inline-input" data-field="address" value="${esc(item.address || '')}" /></td>
                 <td><button type="button" class="deleteBtn" data-del-entity="${type}" data-id="${item.id}">Delete</button></td>
-              </tr>`).join('') : `<tr><td colspan="4" class="empty">No ${title.toLowerCase()} yet.</td></tr>`}
+              </tr>`).join('') : `<tr><td colspan="5" class="empty">No ${title.toLowerCase()} yet.</td></tr>`}
           </tbody>
         </table>
       </div>

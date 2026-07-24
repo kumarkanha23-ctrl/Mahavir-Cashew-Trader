@@ -2,7 +2,8 @@ import {
   getState, calcDeal, calcDealTotals, saveDeal, deleteDeal, saveRate, deleteRate,
   fmtDate, fmtMoney, fmtNum, num, esc, toast, confirmAction, navigate, uid,
   ROUTES, today, DEFAULT_COMMISSION, filterDeals,
-  normalizeDeal, getDealGrades, dashboardMetrics
+  normalizeDeal, getDealGrades, dashboardMetrics, buildRecentDealsWhatsAppMessage,
+  openWhatsApp, openWhatsAppForDeal
 } from './app.js';
 import { exportDealsExcel, importRatesFromCsv } from './excel.js';
 
@@ -595,7 +596,11 @@ function renderRecentDealRowsModern(deal) {
   const actionButtons = `
     <button type="button" class="iconAction editBtn" data-edit="${d.id}" aria-label="Edit deal" title="Edit deal">Edit</button>
     <button type="button" class="iconAction deleteBtn" data-del="${d.id}" aria-label="Delete deal" title="Delete deal">Delete</button>
-    <button type="button" class="iconAction detailBtn" aria-label="View details" title="View details">Details</button>`;
+    <button type="button" class="iconAction detailBtn" aria-label="View details" title="View details">Details</button>
+    <button type="button" class="whatsapp-btn" data-whatsapp-deal="${d.id}" data-deal-type="${d.type || 'SALE'}" aria-label="Send to WhatsApp" title="Send to WhatsApp">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12.04 2A10.01 10.01 0 0 0 2.03 12.02c0 1.76.47 3.46 1.35 4.95L2 22l5.2-1.37a9.98 9.98 0 0 0 4.84 1.18h.01c5.52 0 10.01-4.49 10.01-10.01S17.56 2 12.04 2Zm0 18.3h-.01a8.27 8.27 0 0 1-4.22-1.15l-.3-.18-3.09.81.82-3.01-.19-.31a8.25 8.25 0 0 1 1.3-10.23 8.25 8.25 0 0 1 10.34 0 8.25 8.25 0 0 1 0 11.65 8.25 8.25 0 0 1-4.65 2.42Zm4.73-6.2c-.26-.13-1.53-.76-1.77-.84-.24-.09-.42-.13-.59.13-.17.26-.67.84-.82 1.01-.15.17-.3.19-.56.06-.26-.13-1.1-.4-2.09-1.28-.77-.69-1.3-1.54-1.45-1.8-.15-.26-.02-.4.11-.53.11-.11.26-.29.39-.43.13-.14.18-.24.27-.4.09-.16.04-.3-.02-.43-.06-.13-.59-1.42-.81-1.94-.21-.51-.43-.44-.59-.45h-.51c-.17 0-.43.06-.66.3-.23.24-.87.85-.87 2.07 0 1.22.9 2.4 1.03 2.56.13.17 1.78 2.72 4.32 3.81.6.26 1.07.42 1.44.54.6.19 1.14.17 1.57.1.48-.07 1.53-.63 1.75-1.24.22-.61.22-1.14.15-1.25-.07-.11-.24-.17-.5-.3Z"></path></svg>
+      <span>Send to WhatsApp</span>
+    </button>`;
 
   const gradeRows = d.grades.map((g) => `
     <tr>
@@ -700,6 +705,10 @@ export function renderRecentDeals(container) {
           <span class="hero-badge hero-badge-primary"><span class="hero-dot"></span> Live Sync</span>
           <span class="hero-badge">${deals.length} Deals</span>
           <span class="hero-badge">Updated ${fmtDate(today())}</span>
+          <button type="button" class="whatsapp-btn whatsapp-btn-inline" id="recentDealsWhatsAppBtn" title="Share recent deals via WhatsApp">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12.04 2A10.01 10.01 0 0 0 2.03 12.02c0 1.76.47 3.46 1.35 4.95L2 22l5.2-1.37a9.98 9.98 0 0 0 4.84 1.18h.01c5.52 0 10.01-4.49 10.01-10.01S17.56 2 12.04 2Zm0 18.3h-.01a8.27 8.27 0 0 1-4.22-1.15l-.3-.18-3.09.81.82-3.01-.19-.31a8.25 8.25 0 0 1 1.3-10.23 8.25 8.25 0 0 1 10.34 0 8.25 8.25 0 0 1 0 11.65 8.25 8.25 0 0 1-4.65 2.42Zm4.73-6.2c-.26-.13-1.53-.76-1.77-.84-.24-.09-.42-.13-.59.13-.17.26-.67.84-.82 1.01-.15.17-.3.19-.56.06-.26-.13-1.1-.4-2.09-1.28-.77-.69-1.3-1.54-1.45-1.8-.15-.26-.02-.4.11-.53.11-.11.26-.29.39-.43.13-.14.18-.24.27-.4.09-.16.04-.3-.02-.43-.06-.13-.59-1.42-.81-1.94-.21-.51-.43-.44-.59-.45h-.51c-.17 0-.43.06-.66.3-.23.24-.87.85-.87 2.07 0 1.22.9 2.4 1.03 2.56.13.17 1.78 2.72 4.32 3.81.6.26 1.07.42 1.44.54.6.19 1.14.17 1.57.1.48-.07 1.53-.63 1.75-1.24.22-.61.22-1.14.15-1.25-.07-.11-.24-.17-.5-.3Z"></path></svg>
+            <span>Send to WhatsApp</span>
+          </button>
         </div>
       </section>
 
