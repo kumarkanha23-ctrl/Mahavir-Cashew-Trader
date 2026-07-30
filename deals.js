@@ -123,11 +123,12 @@ function defaultGradeRow(s, data = {}) {
 
 function renderGradeRowHtml(row, s, grades) {
   const c = calcDeal(row);
+  const autoKg = row.bucket !== '' && row.bucket != null ? calcDeal({ ...row, kg: '' }).kg : '';
   return `
     <tr class="grade-row" data-line-id="${row.id}">
       <td><input type="text" class="grade-input" list="gradeList" value="${esc(row.grade)}" placeholder="Grade" required /></td>
       <td><input type="number" class="bucket-input" step="0.01" min="0" value="${row.bucket}" placeholder="Bucket" /></td>
-      <td><input type="number" class="kg-input" step="0.001" min="0" value="${row.kg}" placeholder="KG" /></td>
+      <td><input type="number" class="kg-input" step="0.001" min="0" value="${autoKg}" placeholder="KG" readonly /></td>
       <td><input type="number" class="factory-rate-input" step="0.01" min="0" value="${row.factoryRate}" placeholder="Rate" required /></td>
       <td><input type="number" class="commission-input" step="0.01" min="0" value="${row.commissionPerKg}" placeholder="Comm" required /></td>
       <td class="calc-cell party-rate-cell">${fmtMoney(c.partyRate)}</td>
@@ -154,6 +155,7 @@ function collectGradeRows(tbody) {
 function updateRowCalc(tr, s) {
   const bucketInput = tr.querySelector('.bucket-input');
   const kgInput = tr.querySelector('.kg-input');
+  kgInput.readOnly = true;
   const row = {
     bucket: bucketInput.value,
     kg: kgInput.value,
@@ -162,9 +164,13 @@ function updateRowCalc(tr, s) {
   };
 
   const c = calcDeal(row);
-  if (bucketInput.value && (!kgInput.dataset.manual || !kgInput.value)) {
-    kgInput.value = c.kg;
-    row.kg = c.kg;
+  const autoKg = bucketInput.value !== '' && bucketInput.value != null ? c.kg : '';
+  if (bucketInput.value !== '' && bucketInput.value != null) {
+    kgInput.value = autoKg;
+    row.kg = autoKg;
+  } else {
+    kgInput.value = '';
+    row.kg = '';
   }
 
   const cFinal = calcDeal({
@@ -204,9 +210,6 @@ function bindGradeTable(container, s) {
   tbody.addEventListener('input', (e) => {
     const tr = e.target.closest('.grade-row');
     if (!tr) return;
-    if (e.target.classList.contains('kg-input')) {
-      e.target.dataset.manual = e.target.value ? '1' : '';
-    }
     updateRowCalc(tr, s);
     updateDealTotals(container);
   });
