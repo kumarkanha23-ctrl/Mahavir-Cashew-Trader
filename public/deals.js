@@ -121,6 +121,14 @@ function defaultGradeRow(s, data = {}) {
   };
 }
 
+function formatRemarkHtml(remark) {
+  const r = (remark || '').trim();
+  if (!r) return '—';
+  const display = r.length > 40 ? `${esc(r.slice(0, 40))}...` : esc(r);
+  const title = esc(r);
+  return `<span title="${title}">${display}</span>`;
+}
+
 function renderGradeRowHtml(row, s, grades) {
   const bucketToKg = s.bucketToKg || 10;
   const bucketValue = row.bucket !== '' && row.bucket != null
@@ -495,6 +503,7 @@ function renderDealDetailRows(deal) {
       <td>${g ? fmtMoney(g.partyRate) : '—'}</td>
       <td>${fmtMoney(d.totalPurchase)}</td><td>${fmtMoney(d.totalSale)}</td><td>${fmtMoney(d.totalProfit)}</td>
       <td><span class="status-badge completed">✓ Completed</span></td>
+      <td>${formatRemarkHtml(d.remarks)}</td>
       <td class="actions">
         <button type="button" class="editBtn" data-edit="${d.id}">Edit</button>
         <button type="button" class="deleteBtn" data-del="${d.id}">Delete</button>
@@ -512,6 +521,7 @@ function renderDealDetailRows(deal) {
       <td>${fmtMoney(g.partyRate)}</td>
       <td>${fmtMoney(g.purchaseAmount)}</td><td>${fmtMoney(g.saleAmount)}</td><td>${fmtMoney(g.profit)}</td>
       <td>${i === 0 ? '<span class="status-badge completed">✓ Completed</span>' : ''}</td>
+      <td>${i === 0 ? formatRemarkHtml(d.remarks) : ''}</td>
       <td class="actions">${i === 0 ? `
         <button type="button" class="editBtn" data-edit="${d.id}">Edit</button>
         <button type="button" class="deleteBtn" data-del="${d.id}">Delete</button>` : ''}</td>
@@ -525,7 +535,7 @@ function renderDealDetailRows(deal) {
       <td><strong>${fmtMoney(d.totalPurchase)}</strong></td>
       <td><strong>${fmtMoney(d.totalSale)}</strong></td>
       <td><strong>${fmtMoney(d.totalProfit)}</strong></td>
-      <td></td><td></td>
+      <td></td><td></td><td></td>
     </tr>`;
   return gradeRows + totalRow;
 }
@@ -609,11 +619,11 @@ function renderRecentDealsOld(container) {
                 <tr>
                   <th>Deal No</th><th>Date</th><th>Party</th><th>Factory</th><th>Grade</th>
                   <th>Bucket</th><th>KG</th><th>Factory Rate</th><th>Comm/KG</th><th>Party Rate</th>
-                  <th>Purchase</th><th>Sale</th><th>Profit</th><th>Status</th><th>Actions</th>
+                  <th>Purchase</th><th>Sale</th><th>Profit</th><th>Status</th><th>Remarks</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                ${deals.length ? deals.map((d) => renderDealDetailRows(d)).join('') : '<tr><td colspan="15" class="empty">No deals found. Adjust filters or create a new deal.</td></tr>'}
+                ${deals.length ? deals.map((d) => renderDealDetailRows(d)).join('') : '<tr><td colspan="16" class="empty">No deals found. Adjust filters or create a new deal.</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -728,6 +738,7 @@ function renderRecentDealRowsModern(deal) {
           </div>
           <div class="deal-card-summary-side">
             <span class="status-badge completed">Completed</span>
+            <div class="remark-inline">${formatRemarkHtml(d.remarks)}</div>
             <span class="deal-expand-icon" aria-hidden="true">▾</span>
           </div>
         </summary>
