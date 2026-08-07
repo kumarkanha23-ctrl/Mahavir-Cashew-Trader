@@ -14,9 +14,9 @@ function expectNotContains(text, needle) {
 }
 
 function test() {
-  expectContains(source, 'kgInput.readOnly = true');
-  expectContains(source, 'const autoKg =');
-  expectNotContains(source, 'kgInput.dataset.manual');
+  expectContains(source, 'nextBucket = round');
+  expectContains(source, 'nextKg = round');
+  expectNotContains(source, 'kgInput.readOnly = true');
 }
 
 test();

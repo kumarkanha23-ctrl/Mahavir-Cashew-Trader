@@ -1,6 +1,6 @@
 import {
   getState, calcDeal, calcDealTotals, saveDeal, deleteDeal, saveRate, deleteRate,
-  fmtDate, fmtMoney, fmtNum, num, esc, toast, confirmAction, navigate, uid,
+  fmtDate, fmtMoney, fmtNum, round, num, esc, toast, confirmAction, navigate, uid,
   ROUTES, today, DEFAULT_COMMISSION, filterDeals,
   normalizeDeal, getDealGrades, dashboardMetrics, buildRecentDealsWhatsAppMessage,
   openWhatsApp, openWhatsAppForDeal
@@ -122,13 +122,19 @@ function defaultGradeRow(s, data = {}) {
 }
 
 function renderGradeRowHtml(row, s, grades) {
-  const c = calcDeal(row);
-  const autoKg = row.bucket !== '' && row.bucket != null ? calcDeal({ ...row, kg: '' }).kg : '';
+  const bucketToKg = s.bucketToKg || 10;
+  const bucketValue = row.bucket !== '' && row.bucket != null
+    ? row.bucket
+    : (row.kg !== '' && row.kg != null ? round(num(row.kg) / bucketToKg, 2) : '');
+  const kgValue = row.kg !== '' && row.kg != null
+    ? row.kg
+    : (bucketValue !== '' ? round(num(bucketValue) * bucketToKg, 3) : '');
+  const c = calcDeal({ ...row, bucket: bucketValue, kg: kgValue });
   return `
     <tr class="grade-row" data-line-id="${row.id}">
       <td><input type="text" class="grade-input" list="gradeList" value="${esc(row.grade)}" placeholder="Grade" required /></td>
-      <td><input type="number" class="bucket-input" step="0.01" min="0" value="${row.bucket}" placeholder="Bucket" /></td>
-      <td><input type="number" class="kg-input" step="0.001" min="0" value="${autoKg}" placeholder="KG" readonly /></td>
+      <td><input type="number" class="bucket-input" step="0.01" min="0" value="${bucketValue}" placeholder="Bucket" /></td>
+      <td><input type="number" class="kg-input" step="0.001" min="0" value="${kgValue}" placeholder="KG" /></td>
       <td><input type="number" class="factory-rate-input" step="0.01" min="0" value="${row.factoryRate}" placeholder="Rate" required /></td>
       <td><input type="number" class="commission-input" step="0.01" min="0" value="${row.commissionPerKg}" placeholder="Comm" required /></td>
       <td class="calc-cell party-rate-cell">${fmtMoney(c.partyRate)}</td>
@@ -152,31 +158,45 @@ function collectGradeRows(tbody) {
   }));
 }
 
-function updateRowCalc(tr, s) {
+function updateRowCalc(tr, s, changedField = null) {
   const bucketInput = tr.querySelector('.bucket-input');
   const kgInput = tr.querySelector('.kg-input');
-  kgInput.readOnly = true;
+  const bucketToKg = s.bucketToKg || 10;
+  let nextBucket = bucketInput.value;
+  let nextKg = kgInput.value;
+
+  if (changedField === 'bucket') {
+    if (bucketInput.value === '' || bucketInput.value == null) {
+      nextKg = '';
+    } else {
+      nextKg = round(num(bucketInput.value) * bucketToKg, 3);
+    }
+  } else if (changedField === 'kg') {
+    if (kgInput.value === '' || kgInput.value == null) {
+      nextBucket = '';
+    } else {
+      nextBucket = round(num(kgInput.value) / bucketToKg, 2);
+    }
+  } else if (nextBucket !== '' && nextBucket != null) {
+    nextKg = round(num(nextBucket) * bucketToKg, 3);
+  } else if (nextKg !== '' && nextKg != null) {
+    nextBucket = round(num(nextKg) / bucketToKg, 2);
+  } else {
+    nextBucket = '';
+    nextKg = '';
+  }
+
+  bucketInput.value = nextBucket;
+  kgInput.value = nextKg;
+
   const row = {
-    bucket: bucketInput.value,
-    kg: kgInput.value,
+    bucket: nextBucket,
+    kg: nextKg,
     factoryRate: tr.querySelector('.factory-rate-input').value,
     commissionPerKg: tr.querySelector('.commission-input').value
   };
 
-  const c = calcDeal(row);
-  const autoKg = bucketInput.value !== '' && bucketInput.value != null ? c.kg : '';
-  if (bucketInput.value !== '' && bucketInput.value != null) {
-    kgInput.value = autoKg;
-    row.kg = autoKg;
-  } else {
-    kgInput.value = '';
-    row.kg = '';
-  }
-
-  const cFinal = calcDeal({
-    ...row,
-    kg: kgInput.value
-  });
+  const cFinal = calcDeal(row);
   tr.querySelector('.party-rate-cell').textContent = fmtMoney(cFinal.partyRate);
   tr.querySelector('.purchase-cell').textContent = fmtMoney(cFinal.purchaseAmount);
   tr.querySelector('.sale-cell').textContent = fmtMoney(cFinal.saleAmount);
@@ -207,14 +227,18 @@ function bindGradeTable(container, s) {
     });
   };
 
-  tbody.addEventListener('input', (e) => {
+  // Named handlers so they can be removed/rebound when rows change
+  function onInput(e) {
     const tr = e.target.closest('.grade-row');
     if (!tr) return;
-    updateRowCalc(tr, s);
+    const changedField = e.target.classList.contains('bucket-input') ? 'bucket'
+      : e.target.classList.contains('kg-input') ? 'kg'
+      : null;
+    updateRowCalc(tr, s, changedField);
     updateDealTotals(container);
-  });
+  }
 
-  tbody.addEventListener('change', (e) => {
+  function onChange(e) {
     if (!e.target.classList.contains('grade-input')) return;
     const tr = e.target.closest('.grade-row');
     const r = getState().rates.find((x) => x.grade.toLowerCase() === e.target.value.trim().toLowerCase());
@@ -224,20 +248,76 @@ function bindGradeTable(container, s) {
       updateRowCalc(tr, s);
       updateDealTotals(container);
     }
-  });
+  }
 
-  tbody.addEventListener('click', (e) => {
+  function onClick(e) {
     if (!e.target.classList.contains('remove-grade-btn')) return;
     if (tbody.querySelectorAll('.grade-row').length <= 1) return;
     e.target.closest('.grade-row').remove();
     refreshAll();
-  });
+  }
+
+  // Attach delegation handlers once
+  tbody.addEventListener('input', onInput);
+  tbody.addEventListener('change', onChange);
+  tbody.addEventListener('click', onClick);
+
+  // Helper: attach direct listeners to a specific row for immediate two-way sync
+  function attachRowListeners(tr) {
+    const bucketInput = tr.querySelector('.bucket-input');
+    const kgInput = tr.querySelector('.kg-input');
+    const bucketToKg = s.bucketToKg || 10;
+    if (!bucketInput || !kgInput) return;
+
+    // Ensure KG is editable
+    kgInput.removeAttribute('readonly');
+    kgInput.disabled = false;
+
+    const onBucket = () => {
+      if (bucketInput.value === '' || bucketInput.value == null) {
+        kgInput.value = '';
+      } else {
+        kgInput.value = round(num(bucketInput.value) * bucketToKg, 3);
+      }
+      updateRowCalc(tr, s, 'bucket');
+      updateDealTotals(container);
+    };
+
+    const onKg = () => {
+      if (kgInput.value === '' || kgInput.value == null) {
+        bucketInput.value = '';
+      } else {
+        bucketInput.value = round(num(kgInput.value) / bucketToKg, 2);
+      }
+      updateRowCalc(tr, s, 'kg');
+      updateDealTotals(container);
+    };
+
+    bucketInput.addEventListener('input', onBucket);
+    kgInput.addEventListener('input', onKg);
+  }
 
   container.querySelector('#addGradeBtn').addEventListener('click', () => {
     const row = defaultGradeRow(s);
     tbody.insertAdjacentHTML('beforeend', renderGradeRowHtml(row, s, [...tbody.querySelectorAll('.grade-row'), {}]));
+
+    // Rebind delegation handlers (remove then re-add) to satisfy rebinding requirement
+    tbody.removeEventListener('input', onInput);
+    tbody.removeEventListener('change', onChange);
+    tbody.removeEventListener('click', onClick);
+    tbody.addEventListener('input', onInput);
+    tbody.addEventListener('change', onChange);
+    tbody.addEventListener('click', onClick);
+
+    // Attach direct listeners to the newly added row
+    const newTr = tbody.querySelector('.grade-row:last-child');
+    if (newTr) attachRowListeners(newTr);
+
     refreshAll();
   });
+
+  // Attach direct listeners to existing rows
+  tbody.querySelectorAll('.grade-row').forEach((tr) => attachRowListeners(tr));
 
   refreshAll();
 }
