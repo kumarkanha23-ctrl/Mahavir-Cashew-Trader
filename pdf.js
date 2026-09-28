@@ -22,6 +22,10 @@ const PRINT_STYLE = `
   table.admin-table { width: 100%; max-width: 100%; table-layout: auto; font-size: 7px; }
   table.admin-table th, table.admin-table td { padding: 4px 3px; white-space: nowrap; word-break: normal; overflow-wrap: normal; }
   table.admin-table th { font-size: 6px; letter-spacing: 0; }
+  .admin-amounts { margin-top: 12px; padding: 8px 10px; border: 1px solid #dfe8df; border-radius: 8px; background: #f7fbf8; }
+  .admin-amounts h3 { margin: 0 0 6px; color: #166534; font-size: 10px; }
+  .admin-amount-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px solid #e5e7eb; font-size: 9px; }
+  .admin-amount-total { margin-top: 6px; text-align: right; color: #166534; font-size: 10px; font-weight: 700; }
   th, td, tr { page-break-inside: avoid; break-inside: avoid; }
   th { background: #166534; color: #fff; padding: 10px 8px; text-align: left; }
   td { padding: 8px; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; word-break: break-word; }
@@ -301,7 +305,7 @@ function buildDealPdfHtml(deal, templateName = 'party') {
     if (template === 'factory') {
       return `<tr><td>${escapeHtml(g.grade || '—')}</td><td>${escapeHtml(fmtNum(g.bucket || 0, 2))}</td><td>${escapeHtml(fmtNum(g.kg || 0, 3))}</td><td>${escapeHtml(fmtMoney(g.factoryRate || 0))}</td><td>${escapeHtml(fmtMoney(g.purchaseAmount || 0))}</td></tr>`;
     }
-    return `<tr><td>${escapeHtml(g.grade || '—')}</td><td>${escapeHtml(fmtNum(g.bucket || 0, 2))}</td><td>${escapeHtml(fmtNum(g.kg || 0, 3))}</td><td>${escapeHtml(fmtMoney(g.partyRate || 0))}</td><td>${escapeHtml(fmtMoney(g.factoryRate || 0))}</td><td>${escapeHtml(fmtMoney(g.commissionPerKg || 0))}</td><td>${escapeHtml(fmtMoney(g.profit || 0))}</td><td>${escapeHtml(fmtMoney(g.saleAmount || 0))}</td></tr>`;
+    return `<tr><td>${escapeHtml(g.grade || '—')}</td><td>${escapeHtml(fmtNum(g.bucket || 0, 2))}</td><td>${escapeHtml(fmtNum(g.kg || 0, 3))}</td><td>${escapeHtml(fmtMoney(g.partyRate || 0))}</td><td>${escapeHtml(fmtMoney(g.factoryRate || 0))}</td><td>${escapeHtml(fmtMoney(g.commissionPerKg || 0))}</td><td>${escapeHtml(fmtMoney(g.profit || 0))}</td></tr>`;
   }).join('');
 
   const headerTitle = getDealTemplateLabel(template);
@@ -360,6 +364,7 @@ function buildDealPdfHtml(deal, templateName = 'party') {
       <p>Factory Rate: ${escapeHtml(fmtMoney(firstGrade.factoryRate || 0))}</p>
       <p>Commission: ${escapeHtml(fmtMoney(d.totalCommission || 0))}</p>
       <p>Profit: ${escapeHtml(fmtMoney(d.totalProfit || 0))}</p>
+      <p>Total Sale Amount: ${escapeHtml(fmtMoney(d.totalSale || 0))}</p>
     </div>` : template === 'party' ? `
     <div class="card">
       <h3>Invoice Summary</h3>
@@ -416,11 +421,12 @@ function buildDealPdfHtml(deal, templateName = 'party') {
               <th>Grade</th>
               <th>Bucket</th>
               <th>KG</th>
-              ${template === 'party' ? '<th>Selling Rate</th><th>Amount</th>' : template === 'factory' ? '<th>Purchase Rate</th><th>Amount</th>' : '<th>Selling Rate</th><th>Purchase Rate</th><th>Commission</th><th>Profit</th><th>Amount</th>'}
+              ${template === 'party' ? '<th>Selling Rate</th><th>Amount</th>' : template === 'factory' ? '<th>Purchase Rate</th><th>Amount</th>' : '<th>Selling Rate</th><th>Purchase Rate</th><th>Commission</th><th>Profit</th>'}
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
+        ${template === 'admin' ? `<div class="admin-amounts"><h3>Sale Amount by Grade</h3>${d.grades.map((g) => `<div class="admin-amount-row"><span>${escapeHtml(g.grade || '—')}</span><strong>${escapeHtml(fmtMoney(g.saleAmount || 0))}</strong></div>`).join('')}<div class="admin-amount-total">Total Sale Amount: ${escapeHtml(fmtMoney(d.totalSale || 0))}</div></div>` : ''}
 
         <div class="note"><strong>Remarks:</strong> ${escapeHtml(d.remarks || 'No remarks captured.')}</div>
 
