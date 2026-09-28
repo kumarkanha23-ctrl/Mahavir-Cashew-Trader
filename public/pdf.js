@@ -315,7 +315,7 @@ function buildDealPdfHtml(deal, templateName = 'party') {
     if (template === 'factory') {
       return `<tr><td>${escapeHtml(g.grade || '—')}</td><td>${escapeHtml(fmtNum(g.bucket || 0, 2))}</td><td>${escapeHtml(fmtNum(g.kg || 0, 3))}</td><td>${escapeHtml(fmtMoney(g.factoryRate || 0))}</td><td>${escapeHtml(fmtMoney(g.purchaseAmount || 0))}</td></tr>`;
     }
-    return `<tr><td>${escapeHtml(g.grade || '—')}</td><td>${escapeHtml(fmtNum(g.bucket || 0, 2))}</td><td>${escapeHtml(fmtNum(g.kg || 0, 3))}</td><td>${escapeHtml(fmtMoney(g.partyRate || 0))}</td><td>${escapeHtml(fmtMoney(g.factoryRate || 0))}</td><td>${escapeHtml(fmtMoney(g.commissionPerKg || 0))}</td><td>${escapeHtml(fmtMoney(g.profit || 0))}</td></tr>`;
+    return `<tr><td>${escapeHtml(g.grade || '—')}</td><td>${escapeHtml(fmtNum(g.bucket || 0, 2))}</td><td>${escapeHtml(fmtNum(g.kg || 0, 3))}</td><td>${escapeHtml(fmtMoney(g.partyRate || 0))}</td><td>${escapeHtml(fmtMoney(g.factoryRate || 0))}</td><td>${escapeHtml(fmtMoney(g.commissionPerKg || 0))}</td></tr>`;
   }).join('');
 
   const headerTitle = getDealTemplateLabel(template);
@@ -431,12 +431,12 @@ function buildDealPdfHtml(deal, templateName = 'party') {
               <th>Grade</th>
               <th>Bucket</th>
               <th>KG</th>
-              ${template === 'party' ? '<th>Selling Rate</th><th>Amount</th>' : template === 'factory' ? '<th>Purchase Rate</th><th>Amount</th>' : '<th>Selling Rate</th><th>Purchase Rate</th><th>Commission</th><th>Profit</th>'}
+              ${template === 'party' ? '<th>Selling Rate</th><th>Amount</th>' : template === 'factory' ? '<th>Purchase Rate</th><th>Amount</th>' : '<th>Selling Rate</th><th>Purchase Rate</th><th>Commission</th>'}
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
-        ${template === 'admin' ? `<div class="admin-amounts"><h3>Sale Amount by Grade</h3>${d.grades.map((g) => `<div class="admin-amount-row"><span>${escapeHtml(g.grade || '—')}</span><strong>${escapeHtml(fmtMoney(g.saleAmount || 0))}</strong></div>`).join('')}<div class="admin-amount-total">Total Sale Amount: ${escapeHtml(fmtMoney(d.totalSale || 0))}</div></div>` : ''}
+        ${template === 'admin' ? `<div class="admin-amounts"><h3>Grade • Profit • Sale Amount</h3>${d.grades.map((g) => `<div class="admin-amount-row"><span>${escapeHtml(g.grade || '—')}</span><span>Profit: ${escapeHtml(fmtMoney(g.profit || 0))}</span><strong>${escapeHtml(fmtMoney(g.saleAmount || 0))}</strong></div>`).join('')}<div class="admin-amount-total">Total Profit: ${escapeHtml(fmtMoney(d.totalProfit || 0))} &nbsp; | &nbsp; Total Sale Amount: ${escapeHtml(fmtMoney(d.totalSale || 0))}</div></div>` : ''}
 
         <div class="note"><strong>Remarks:</strong> ${escapeHtml(d.remarks || 'No remarks captured.')}</div>
 
