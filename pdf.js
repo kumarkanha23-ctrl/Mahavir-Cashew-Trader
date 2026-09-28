@@ -19,9 +19,9 @@ const PRINT_STYLE = `
   .card h3 { margin: 0 0 8px 0; color: #166534; font-size: 14px; }
   .card p { margin: 4px 0; font-size: 13px; overflow-wrap: anywhere; word-break: break-word; }
   table { width: 100%; max-width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
-  table.admin-table { width: 100%; max-width: 100%; table-layout: fixed; font-size: 8px; }
-  table.admin-table th, table.admin-table td { padding: 7px 4px; white-space: nowrap; word-break: normal; overflow-wrap: normal; }
-  table.admin-table th { font-size: 7px; letter-spacing: 0; }
+  table.admin-table { width: 100%; max-width: 100%; table-layout: auto; font-size: 7px; }
+  table.admin-table th, table.admin-table td { padding: 4px 3px; white-space: nowrap; word-break: normal; overflow-wrap: normal; }
+  table.admin-table th { font-size: 6px; letter-spacing: 0; }
   th, td, tr { page-break-inside: avoid; break-inside: avoid; }
   th { background: #166534; color: #fff; padding: 10px 8px; text-align: left; }
   td { padding: 8px; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; word-break: break-word; }
@@ -411,7 +411,6 @@ function buildDealPdfHtml(deal, templateName = 'party') {
         </div>
 
         <table class="${template === 'admin' ? 'admin-table' : ''}">
-          ${template === 'admin' ? '<colgroup><col style="width:13%"><col style="width:9%"><col style="width:10%"><col style="width:14%"><col style="width:14%"><col style="width:12%"><col style="width:12%"><col style="width:16%"></colgroup>' : ''}
           <thead>
             <tr>
               <th>Grade</th>
