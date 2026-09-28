@@ -27,12 +27,15 @@ const PRINT_STYLE = `
   .admin-amount-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px solid #e5e7eb; font-size: 9px; }
   .admin-amount-total { margin-top: 6px; text-align: right; color: #166534; font-size: 10px; font-weight: 700; }
   .admin-copy-page .grid { gap: 8px; margin: 10px 0; }
-  .admin-copy-page .card { padding: 8px; }
+  .admin-copy-page { padding-top: 7mm; padding-bottom: 5mm; }
+  .pdf-shell .admin-copy-page .card { padding: 8px; opacity: 1; }
   .admin-copy-page .card h3 { margin-bottom: 5px; font-size: 12px; }
   .admin-copy-page .card p { margin: 3px 0; font-size: 11px; }
-  .admin-copy-page table { margin-top: 8px; }
+  .admin-copy-page table { margin-top: 16px; }
   .admin-copy-page .admin-amounts { margin-top: 8px; padding: 6px 8px; }
   .admin-copy-page .admin-amount-row { padding: 2px 0; }
+  .admin-copy-page .signature { margin-top: 14px; }
+  .admin-copy-page .footer { margin-top: 12px; }
   th, td, tr { page-break-inside: avoid; break-inside: avoid; }
   th { background: #166534; color: #fff; padding: 10px 8px; text-align: left; }
   td { padding: 8px; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; word-break: break-word; }
