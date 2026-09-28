@@ -172,7 +172,7 @@ async function createPdfBlobFromHtml(htmlContent, options = {}) {
   try {
     await ensureHtml2Pdf();
     await waitForPdfRender(invoiceElement);
-    const targetWidth = Math.max(1, Math.min(Math.ceil(invoiceElement.scrollWidth || 1), Math.ceil(210 * 3.7795275591)));
+    const targetWidth = Math.max(1, Math.ceil(invoiceElement.scrollWidth || invoiceElement.getBoundingClientRect().width || 1));
     const targetHeight = Math.max(1, Math.ceil(invoiceElement.scrollHeight || 1));
     const opt = {
       margin: [0, 0, 0, 0],
@@ -191,7 +191,7 @@ async function createPdfBlobFromHtml(htmlContent, options = {}) {
         windowHeight: targetHeight
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
-      pagebreak: { mode: [] }
+      pagebreak: { mode: ['css'] }
     };
     const pdf = await new Promise((resolve, reject) => {
       window.html2pdf().set(opt).from(invoiceElement).toPdf().output('blob').then(resolve).catch(reject);
