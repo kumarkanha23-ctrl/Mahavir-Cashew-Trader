@@ -15,7 +15,7 @@ const PRINT_STYLE = `
   .meta { color: #6b7280; font-size: 12px; margin-top: 4px; }
   .grid { display: flex; gap: 12px; margin: 16px 0; align-items: stretch; }
   .grid > .card { flex: 1 1 0; min-width: 0; }
-  .card { border: 1px solid #e5e7eb; padding: 12px; border-radius: 10px; background: #fafafa; page-break-inside: avoid; break-inside: avoid; }
+  .card { display: block; border: 1px solid #e5e7eb; padding: 12px; border-radius: 10px; background: #fafafa; page-break-inside: avoid; break-inside: avoid; }
   .card h3 { margin: 0 0 8px 0; color: #166534; font-size: 14px; }
   .card p { margin: 4px 0; font-size: 13px; overflow-wrap: anywhere; word-break: break-word; }
   table { width: 100%; max-width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
@@ -446,6 +446,30 @@ function renderPreviewPanel(previewPane, deal, templateName, blob, fileName) {
         <button type="button" class="btn btn-primary" id="downloadPdfBtn">Download PDF</button>
         <button type="button" class="btn btn-secondary" id="printPdfBtn">Print PDF</button>
       </div>
+      <style>
+        #pdfCenterPreview .pdf-preview-document .pdf-shell { width: 100%; max-width: 210mm; margin: 0 auto; padding: 0; }
+        #pdfCenterPreview .pdf-preview-document .pdf-page { width: 100%; max-width: 100%; min-height: 0; margin: 0 auto; padding: 24px; overflow: hidden; }
+        #pdfCenterPreview .pdf-preview-document .brand { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 2px solid #166534; }
+        #pdfCenterPreview .pdf-preview-document .logo-box { display: flex; align-items: center; gap: 12px; max-width: 100%; padding: 10px 14px; border-radius: 12px; background: #f0fdf4; }
+        #pdfCenterPreview .pdf-preview-document .badge { padding: 6px 10px; border-radius: 999px; background: #f0fdf4; color: #166534; font-size: 12px; font-weight: 700; }
+        #pdfCenterPreview .pdf-preview-document .summary { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+        #pdfCenterPreview .pdf-preview-document .summary .pill { flex: 1 1 150px; min-width: 0; padding: 10px 12px; border-radius: 8px; background: #f0fdf4; font-size: 13px; }
+        #pdfCenterPreview .pdf-preview-document .summary .pill strong { display: block; margin-top: 3px; color: #166534; font-size: 16px; }
+        #pdfCenterPreview .pdf-preview-document .grid { display: flex; align-items: stretch; gap: 12px; margin: 16px 0; }
+        #pdfCenterPreview .pdf-preview-document .grid > .card { display: block; flex: 1 1 0; min-width: 0; }
+        #pdfCenterPreview .pdf-preview-document .card { display: block; padding: 12px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fafafa; }
+        #pdfCenterPreview .pdf-preview-document .card h3 { margin: 0 0 8px; color: #166534; font-size: 14px; }
+        #pdfCenterPreview .pdf-preview-document .card p { display: block; margin: 4px 0; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+        #pdfCenterPreview .pdf-preview-document table { width: 100%; max-width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 12px; font-size: 11px; }
+        #pdfCenterPreview .pdf-preview-document th { padding: 8px 5px; background: #166534; color: #fff; text-align: left; font-size: 9px; }
+        #pdfCenterPreview .pdf-preview-document td { padding: 7px 5px; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; }
+        #pdfCenterPreview .pdf-preview-document table.admin-table th, #pdfCenterPreview .pdf-preview-document table.admin-table td { padding: 7px 4px; white-space: nowrap; word-break: normal; overflow-wrap: normal; }
+        #pdfCenterPreview .pdf-preview-document .note { margin-top: 14px; padding: 10px 12px; border-left: 4px solid #166534; background: #f9fafb; font-size: 13px; }
+        #pdfCenterPreview .pdf-preview-document .signature { display: flex; gap: 16px; margin-top: 24px; }
+        #pdfCenterPreview .pdf-preview-document .signature-box { flex: 1; min-width: 0; padding-top: 8px; border-top: 1px solid #cbd5e1; font-size: 12px; }
+        #pdfCenterPreview .pdf-preview-document .footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 12px; }
+        @media (max-width: 700px) { #pdfCenterPreview .pdf-preview-document .grid { flex-direction: column; } }
+      </style>
       <div class="pdf-preview-document">${html}</div>
     </div>`;
 
