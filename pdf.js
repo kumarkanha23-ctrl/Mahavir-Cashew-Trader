@@ -19,7 +19,7 @@ const PRINT_STYLE = `
   .card h3 { margin: 0 0 8px 0; color: #166534; font-size: 14px; }
   .card p { margin: 4px 0; font-size: 13px; overflow-wrap: anywhere; word-break: break-word; }
   table { width: 100%; max-width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
-  table.admin-table { width: 88%; max-width: 88%; table-layout: fixed; font-size: 8px; }
+  table.admin-table { width: 100%; max-width: 100%; table-layout: fixed; font-size: 8px; }
   table.admin-table th, table.admin-table td { padding: 7px 4px; white-space: nowrap; word-break: normal; overflow-wrap: normal; }
   table.admin-table th { font-size: 7px; letter-spacing: 0; }
   th, td, tr { page-break-inside: avoid; break-inside: avoid; }
@@ -463,7 +463,7 @@ function renderPreviewPanel(previewPane, deal, templateName, blob, fileName) {
         #pdfCenterPreview .pdf-preview-document table { width: 100%; max-width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 12px; font-size: 11px; }
         #pdfCenterPreview .pdf-preview-document th { padding: 8px 5px; background: #166534; color: #fff; text-align: left; font-size: 9px; }
         #pdfCenterPreview .pdf-preview-document td { padding: 7px 5px; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; }
-        #pdfCenterPreview .pdf-preview-document table.admin-table { width: 88%; max-width: 88%; }
+        #pdfCenterPreview .pdf-preview-document table.admin-table { width: 100%; max-width: 100%; }
         #pdfCenterPreview .pdf-preview-document table.admin-table th, #pdfCenterPreview .pdf-preview-document table.admin-table td { padding: 7px 4px; white-space: nowrap; word-break: normal; overflow-wrap: normal; }
         #pdfCenterPreview .pdf-preview-document .note { margin-top: 14px; padding: 10px 12px; border-left: 4px solid #166534; background: #f9fafb; font-size: 13px; }
         #pdfCenterPreview .pdf-preview-document .signature { display: flex; gap: 16px; margin-top: 24px; }
