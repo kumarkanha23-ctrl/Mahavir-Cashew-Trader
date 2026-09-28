@@ -6,7 +6,7 @@ const PRINT_STYLE = `
   html, body { width: 100%; margin: 0; padding: 0; overflow-x: hidden; }
   body { font-family: 'Segoe UI', Poppins, Arial, sans-serif; background: #f3f4f6; color: #1f2937; }
   .pdf-shell { width: 100%; max-width: 210mm; margin: 0 auto; padding: 0; box-sizing: border-box; overflow-x: hidden; }
-  .pdf-page { width: 186mm; max-width: 100%; min-height: 277mm; margin: 0 auto; padding: 10mm; background: #fff; overflow: hidden; overflow-x: hidden; border-radius: 12px; box-sizing: border-box; overflow-wrap: anywhere; word-break: break-word; }
+  .pdf-page { width: 186mm; max-width: 100%; min-height: 0; margin: 0 auto; padding: 10mm; background: #fff; overflow: hidden; overflow-x: hidden; border-radius: 12px; box-sizing: border-box; overflow-wrap: anywhere; word-break: break-word; }
   .brand { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 2px solid #166534; page-break-inside: avoid; break-inside: avoid; }
   .brand h1 { margin: 0; font-size: 24px; color: #166534; }
   .brand .badge { padding: 6px 10px; border-radius: 999px; background: #f0fdf4; color: #166534; font-size: 12px; font-weight: 700; text-transform: uppercase; }
@@ -19,7 +19,7 @@ const PRINT_STYLE = `
   .card h3 { margin: 0 0 8px 0; color: #166534; font-size: 14px; }
   .card p { margin: 4px 0; font-size: 13px; overflow-wrap: anywhere; word-break: break-word; }
   table { width: 100%; max-width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
-  table.admin-table { width: 100%; table-layout: fixed; font-size: 8px; }
+  table.admin-table { width: 94%; max-width: 94%; table-layout: fixed; font-size: 8px; }
   table.admin-table th, table.admin-table td { padding: 7px 4px; white-space: nowrap; word-break: normal; overflow-wrap: normal; }
   table.admin-table th { font-size: 7px; letter-spacing: 0; }
   th, td, tr { page-break-inside: avoid; break-inside: avoid; }
@@ -463,6 +463,7 @@ function renderPreviewPanel(previewPane, deal, templateName, blob, fileName) {
         #pdfCenterPreview .pdf-preview-document table { width: 100%; max-width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 12px; font-size: 11px; }
         #pdfCenterPreview .pdf-preview-document th { padding: 8px 5px; background: #166534; color: #fff; text-align: left; font-size: 9px; }
         #pdfCenterPreview .pdf-preview-document td { padding: 7px 5px; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; }
+        #pdfCenterPreview .pdf-preview-document table.admin-table { width: 94%; max-width: 94%; }
         #pdfCenterPreview .pdf-preview-document table.admin-table th, #pdfCenterPreview .pdf-preview-document table.admin-table td { padding: 7px 4px; white-space: nowrap; word-break: normal; overflow-wrap: normal; }
         #pdfCenterPreview .pdf-preview-document .note { margin-top: 14px; padding: 10px 12px; border-left: 4px solid #166534; background: #f9fafb; font-size: 13px; }
         #pdfCenterPreview .pdf-preview-document .signature { display: flex; gap: 16px; margin-top: 24px; }
