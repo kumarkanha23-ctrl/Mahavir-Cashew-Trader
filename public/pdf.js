@@ -13,11 +13,15 @@ const PRINT_STYLE = `
   .logo-box { display: inline-flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px; background: #f0fdf4; }
   .logo-badge { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; background: #166534; color: #fff; font-weight: 700; }
   .meta { color: #6b7280; font-size: 12px; margin-top: 4px; }
-  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+  .grid { display: flex; gap: 12px; margin: 16px 0; align-items: stretch; }
+  .grid > .card { flex: 1 1 0; min-width: 0; }
   .card { border: 1px solid #e5e7eb; padding: 12px; border-radius: 10px; background: #fafafa; page-break-inside: avoid; break-inside: avoid; }
   .card h3 { margin: 0 0 8px 0; color: #166534; font-size: 14px; }
   .card p { margin: 4px 0; font-size: 13px; overflow-wrap: anywhere; word-break: break-word; }
   table { width: 100%; max-width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  table.admin-table { width: 100%; table-layout: fixed; font-size: 8px; }
+  table.admin-table th, table.admin-table td { padding: 7px 4px; white-space: nowrap; word-break: normal; overflow-wrap: normal; }
+  table.admin-table th { font-size: 7px; letter-spacing: 0; }
   th, td, tr { page-break-inside: avoid; break-inside: avoid; }
   th { background: #166534; color: #fff; padding: 10px 8px; text-align: left; }
   td { padding: 8px; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; word-break: break-word; }
@@ -76,7 +80,7 @@ const PRINT_STYLE = `
     .pdf-page { box-shadow: none; border-radius: 0; width: 186mm; max-width: 186mm; padding: 10mm; }
   }
   @media (max-width: 700px) {
-    .grid { grid-template-columns: 1fr; }
+    .grid { flex-direction: column; }
     .pdf-shell { padding: 10px; }
   }
 `;
@@ -406,7 +410,8 @@ function buildDealPdfHtml(deal, templateName = 'party') {
           </div>
         </div>
 
-        <table>
+        <table class="${template === 'admin' ? 'admin-table' : ''}">
+          ${template === 'admin' ? '<colgroup><col style="width:13%"><col style="width:9%"><col style="width:10%"><col style="width:14%"><col style="width:14%"><col style="width:12%"><col style="width:12%"><col style="width:16%"></colgroup>' : ''}
           <thead>
             <tr>
               <th>Grade</th>
