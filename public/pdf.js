@@ -26,6 +26,13 @@ const PRINT_STYLE = `
   .admin-amounts h3 { margin: 0 0 6px; color: #166534; font-size: 10px; }
   .admin-amount-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px solid #e5e7eb; font-size: 9px; }
   .admin-amount-total { margin-top: 6px; text-align: right; color: #166534; font-size: 10px; font-weight: 700; }
+  .admin-copy-page .grid { gap: 8px; margin: 10px 0; }
+  .admin-copy-page .card { padding: 8px; }
+  .admin-copy-page .card h3 { margin-bottom: 5px; font-size: 12px; }
+  .admin-copy-page .card p { margin: 3px 0; font-size: 11px; }
+  .admin-copy-page table { margin-top: 8px; }
+  .admin-copy-page .admin-amounts { margin-top: 8px; padding: 6px 8px; }
+  .admin-copy-page .admin-amount-row { padding: 2px 0; }
   th, td, tr { page-break-inside: avoid; break-inside: avoid; }
   th { background: #166534; color: #fff; padding: 10px 8px; text-align: left; }
   td { padding: 8px; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; word-break: break-word; }
@@ -383,7 +390,7 @@ function buildDealPdfHtml(deal, templateName = 'party') {
 
   return `
     <div class="pdf-shell">
-      <div class="pdf-page">
+      <div class="pdf-page ${template === 'admin' ? 'admin-copy-page' : ''}">
         <div class="brand">
           <div class="logo-box">
             <div class="logo-badge">${escapeHtml((companyName || 'MC').slice(0, 2).toUpperCase())}</div>
