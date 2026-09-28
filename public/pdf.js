@@ -35,6 +35,41 @@ const PRINT_STYLE = `
   .logo-badge { flex: 0 0 auto; }
   .signature-box { flex: 1; min-width: 0; border-top: 1px solid #cbd5e1; padding-top: 8px; font-size: 12px; color: #475569; overflow-wrap: anywhere; }
   .footer { margin-top: 20px; font-size: 12px; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 10px; overflow-wrap: anywhere; }
+  .invoice-document { border-top: 5px solid #14532d; padding-top: 18px; color: #17251c; }
+  .invoice-masthead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding-bottom: 18px; border-bottom: 1px solid #dbe5dc; }
+  .invoice-brand { display: flex; align-items: center; gap: 12px; }
+  .invoice-monogram { width: 48px; height: 48px; border-radius: 14px 14px 14px 4px; display: grid; place-items: center; background: #14532d; color: #fff; font-size: 18px; font-weight: 800; letter-spacing: .04em; }
+  .invoice-brand h1 { margin: 0; color: #14532d; font-size: 22px; line-height: 1.15; }
+  .invoice-brand p { margin: 4px 0 0; color: #718078; font-size: 11px; }
+  .invoice-number { min-width: 150px; text-align: right; }
+  .invoice-number small, .invoice-meta small { display: block; color: #718078; font-size: 10px; text-transform: uppercase; letter-spacing: .09em; }
+  .invoice-number strong { display: block; margin-top: 5px; color: #14532d; font-size: 17px; overflow-wrap: anywhere; }
+  .invoice-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin: 20px 0 14px; }
+  .invoice-heading h2 { margin: 0; color: #17251c; font-size: 24px; letter-spacing: .01em; }
+  .invoice-heading span { padding: 6px 10px; border-radius: 999px; background: #edf5ee; color: #14532d; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+  .invoice-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 0 0 16px; }
+  .invoice-meta div { padding: 10px 12px; border: 1px solid #e4ebe4; border-radius: 8px; background: #f8faf8; }
+  .invoice-meta strong { display: block; margin-top: 4px; color: #263a2d; font-size: 12px; }
+  .invoice-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 0 18px; }
+  .invoice-parties .card { min-height: 100px; border: 1px solid #dfe8df; border-left: 3px solid #b78b3d; border-radius: 8px; background: #fff; padding: 12px 14px; }
+  .invoice-parties h3 { margin: 0 0 10px; color: #718078; font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
+  .invoice-parties p { margin: 0; color: #263a2d; font-size: 12px; line-height: 1.55; }
+  .invoice-table { margin-top: 0; border: 1px solid #e1e9e1; border-radius: 8px; overflow: hidden; font-size: 11px; }
+  .invoice-table th { padding: 10px 8px; background: #14532d; color: #fff; font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
+  .invoice-table td { padding: 9px 8px; color: #263a2d; border-bottom: 1px solid #e8eee8; }
+  .invoice-table tbody tr:nth-child(even) td { background: #f8faf8; }
+  .invoice-table tfoot th { background: #edf5ee; color: #14532d; border-top: 1px solid #dce8dc; }
+  .invoice-table th:first-child, .invoice-table td:first-child { text-align: center; }
+  .invoice-table th:nth-child(n+3), .invoice-table td:nth-child(n+3) { text-align: right; }
+  .invoice-bottom { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-top: 18px; }
+  .invoice-quantity { padding-top: 5px; color: #718078; font-size: 11px; }
+  .invoice-totals { width: min(100%, 300px); margin: 0; border: 0; border-collapse: separate; border-spacing: 0; }
+  .invoice-totals td { padding: 12px 14px; border: 0; background: #f4f7f4; }
+  .invoice-totals td:first-child { border-radius: 8px 0 0 8px; color: #526257; font-size: 11px; }
+  .invoice-totals td:last-child { border-radius: 0 8px 8px 0; color: #14532d; text-align: right; font-size: 18px; font-weight: 800; white-space: nowrap; }
+  .invoice-signature { width: 220px; margin: 40px 0 0 auto; padding-top: 10px; border-top: 1px solid #cbd8cc; color: #526257; text-align: center; font-size: 10px; }
+  .invoice-signature strong { display: block; margin-bottom: 24px; color: #14532d; font-size: 11px; }
+  .invoice-footer { margin-top: 22px; padding-top: 10px; border-top: 1px solid #e4ebe4; color: #87938a; text-align: center; font-size: 9px; }
   @page { size: A4; margin: 0; }
   @media print {
     body { background: #fff; }
@@ -210,6 +245,51 @@ function buildDealPdfHtml(deal, templateName = 'party') {
   const factory = state.factories.find((f) => f.id === d.factoryId);
   const firstGrade = d.grades?.[0] || {};
   const logoSvg = `<svg width="46" height="46" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" rx="16" fill="#166534"/><path d="M20 18h24v10H20zM20 36h24v10H20z" fill="#fff"/><circle cx="32" cy="32" r="8" fill="#f0fdf4"/></svg>`;
+
+  // External copies follow the compact seller/buyer invoice layout. Build each
+  // from only its intended counterparty so hidden rates and names cannot leak.
+  if (template === 'party' || template === 'factory') {
+    const isPartyCopy = template === 'party';
+    const company = escapeHtml(companyName);
+    const entity = isPartyCopy ? party : factory;
+    const recipientName = escapeHtml(entity?.name || (isPartyCopy ? d.partyName : d.factoryName) || '—');
+    const total = Number(isPartyCopy ? d.totalSale : d.totalPurchase) || 0;
+    const seller = isPartyCopy
+      ? `<strong>${company}</strong>`
+      : `<strong>${recipientName}</strong>${entity?.address ? `<br>${escapeHtml(entity.address)}` : ''}${entity?.phone ? `<br>Phone: ${escapeHtml(entity.phone)}` : ''}`;
+    const buyer = isPartyCopy
+      ? `<strong>${recipientName}</strong>${entity?.address ? `<br>${escapeHtml(entity.address)}` : ''}${entity?.phone ? `<br>Phone: ${escapeHtml(entity.phone)}` : ''}`
+      : `<strong>${company}</strong>`;
+    const rows = d.grades.map((grade, index) => {
+      const amount = Number(isPartyCopy ? grade.saleAmount : grade.purchaseAmount) || 0;
+      const rate = Number(isPartyCopy ? grade.partyRate : grade.factoryRate) || 0;
+      return `<tr><td>${index + 1}</td><td>${escapeHtml(grade.grade || '—')}</td><td>${escapeHtml(fmtNum(grade.bucket || 0, 2))}</td><td>${escapeHtml(fmtNum(grade.kg || 0, 3))} kg</td><td>${escapeHtml(fmtMoney(rate))}</td><td>${escapeHtml(fmtMoney(amount))}</td></tr>`;
+    }).join('');
+    const title = isPartyCopy ? 'Cashew Order Invoice' : 'Cashew Purchase Invoice';
+    const metaLabels = isPartyCopy
+      ? { partyRole: 'Bill To', type: 'Sales Invoice' }
+      : { partyRole: 'Supplier', type: 'Purchase Invoice' };
+    return `
+      <div class="pdf-shell"><div class="pdf-page invoice-document">
+        <div class="invoice-masthead">
+          <div class="invoice-brand"><div class="invoice-monogram">${escapeHtml((companyName || 'MC').split(/\s+/).map((word) => word[0] || '').join('').slice(0, 2).toUpperCase())}</div><div><h1>${company}</h1><p>CASHEW TRADING</p></div></div>
+          <div class="invoice-number"><small>Invoice Number</small><strong>${escapeHtml(invoiceNo)}</strong></div>
+        </div>
+        <div class="invoice-heading"><h2>${escapeHtml(title)}</h2><span>${metaLabels.type}</span></div>
+        <div class="invoice-meta">
+          <div><small>Invoice Date</small><strong>${escapeHtml(fmtDate(invoiceDate))}</strong></div>
+          <div><small>Deal Reference</small><strong>${escapeHtml(d.dealNo || '—')}</strong></div>
+          <div><small>Product</small><strong>${escapeHtml(settings.productName || 'Cashew')}</strong></div>
+        </div>
+        <div class="invoice-parties"><div class="card"><h3>${isPartyCopy ? 'Seller' : metaLabels.partyRole}</h3><p>${seller}</p></div><div class="card"><h3>${isPartyCopy ? metaLabels.partyRole : 'Buyer'}</h3><p>${buyer}</p></div></div>
+        <table class="invoice-table"><thead><tr><th>#</th><th>Grade</th><th>Buckets</th><th>Quantity</th><th>Rate / KG</th><th>Amount</th></tr></thead><tbody>${rows}</tbody>
+          <tfoot><tr><th colspan="3">Total</th><th>${escapeHtml(fmtNum(d.totalKg || 0, 3))} kg</th><th></th><th>${escapeHtml(fmtMoney(total))}</th></tr></tfoot>
+        </table>
+        <div class="invoice-bottom"><div class="invoice-quantity">Total quantity<br><strong>${escapeHtml(fmtNum(d.totalKg || 0, 3))} kg</strong></div><table class="invoice-totals"><tbody><tr><td>Invoice Total</td><td>${escapeHtml(fmtMoney(total))}</td></tr></tbody></table></div>
+        <div class="invoice-signature"><strong>For ${company}</strong>Authorized Signatory</div>
+        <div class="invoice-footer">Thank you for your business · ${company}</div>
+      </div></div>`;
+  }
 
   const rows = d.grades.map((g) => {
     if (template === 'party') {
