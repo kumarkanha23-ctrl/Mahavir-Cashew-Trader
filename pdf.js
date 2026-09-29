@@ -6,6 +6,9 @@ const PRINT_STYLE = `
   html, body { width: 100%; margin: 0; padding: 0; overflow-x: hidden; }
   body { font-family: 'Segoe UI', Poppins, Arial, sans-serif; background: #f3f4f6; color: #1f2937; }
   .pdf-shell { width: 100%; max-width: 210mm; margin: 0 auto; padding: 0; box-sizing: border-box; overflow-x: hidden; }
+  .pdf-shell, .pdf-shell *, .pdf-shell *::before, .pdf-shell *::after { animation: none !important; transition: none !important; }
+  .pdf-shell .card { opacity: 1 !important; }
+  .pdf-shell .card:hover { box-shadow: none !important; transform: none !important; }
   .pdf-page { width: 186mm; max-width: 100%; min-height: 0; margin: 0 auto; padding: 10mm; background: #fff; overflow: hidden; overflow-x: hidden; border-radius: 12px; box-sizing: border-box; overflow-wrap: anywhere; word-break: break-word; }
   .brand { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 2px solid #166534; page-break-inside: avoid; break-inside: avoid; }
   .brand h1 { margin: 0; font-size: 24px; color: #166534; }
@@ -99,6 +102,15 @@ const PRINT_STYLE = `
   .invoice-table tfoot th { background: #edf5ee; color: #14532d; border-top: 1px solid #dce8dc; }
   .invoice-table th:first-child, .invoice-table td:first-child { text-align: center; }
   .invoice-table th:nth-child(n+3), .invoice-table td:nth-child(n+3) { text-align: right; }
+  .invoice-lines { width: 100%; max-width: 100%; margin-top: 0; border: 1px solid #e1e9e1; border-radius: 8px; overflow: hidden; page-break-inside: avoid; break-inside: avoid; }
+  .invoice-line { display: flex; width: 100%; min-width: 0; page-break-inside: avoid; break-inside: avoid; }
+  .invoice-line > span { display: block; flex-shrink: 0; min-width: 0; padding: 8px 4px; color: #263a2d; font-size: 12px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; word-break: normal; }
+  .invoice-line-header > span { background: #14532d; color: #fff; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; }
+  .invoice-line-alt > span { background: #f8faf8; }
+  .invoice-line-total > span { background: #edf5ee; color: #14532d; font-weight: 800; border-top: 1px solid #dce8dc; }
+  .admin-copy-page .admin-line-list { margin-top: 16px; }
+  .admin-copy-page .admin-line-list .invoice-line > span { padding: 5px 3px; font-size: 9px; font-weight: 700; }
+  .admin-copy-page .admin-line-list .invoice-line-header > span { font-size: 8px; }
   .invoice-bottom { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 10px; page-break-inside: avoid; break-inside: avoid; }
   .invoice-quantity { min-width: 145px; padding-top: 4px; color: #526257; font-size: 11px; font-weight: 600; line-height: 1.5; }
   .invoice-total-card { display: flex; justify-content: space-between; align-items: center; gap: 20px; width: 290px; max-width: 60%; padding: 11px 14px; border-radius: 8px; background: #edf5ee; page-break-inside: avoid; break-inside: avoid; }
@@ -270,6 +282,14 @@ function getDealTemplateLabel(templateName) {
   return 'Party Invoice';
 }
 
+function buildInvoiceFlexLine(values, widths, className = '', alignments = []) {
+  const cells = values.map((value, index) => {
+    const align = alignments[index] || 'left';
+    return `<span style="flex: 0 0 ${widths[index]}%; text-align: ${align};">${value}</span>`;
+  }).join('');
+  return `<div class="invoice-line ${className}">${cells}</div>`;
+}
+
 function buildDealPdfHtml(deal, templateName = 'party') {
   const state = getState();
   const d = normalizeDeal(deal);
@@ -297,11 +317,27 @@ function buildDealPdfHtml(deal, templateName = 'party') {
     const buyer = isPartyCopy
       ? `<strong>${recipientName}</strong>${entity?.address ? `<br>${escapeHtml(entity.address)}` : ''}${entity?.phone ? `<br>Phone: ${escapeHtml(entity.phone)}` : ''}`
       : `<strong>${company}</strong>`;
+    const invoiceColumnWidths = [6, 16, 13, 20, 20, 25];
+    const invoiceAlignments = ['center', 'left', 'right', 'right', 'right', 'right'];
     const rows = d.grades.map((grade, index) => {
       const amount = Number(isPartyCopy ? grade.saleAmount : grade.purchaseAmount) || 0;
       const rate = Number(isPartyCopy ? grade.partyRate : grade.factoryRate) || 0;
-      return `<tr><td>${index + 1}</td><td>${escapeHtml(grade.grade || '—')}</td><td>${escapeHtml(fmtNum(grade.bucket || 0, 2))}</td><td>${escapeHtml(fmtNum(grade.kg || 0, 3))} kg</td><td>${escapeHtml(fmtMoney(rate))}</td><td>${escapeHtml(fmtMoney(amount))}</td></tr>`;
+      return buildInvoiceFlexLine([
+        String(index + 1),
+        escapeHtml(grade.grade || '—'),
+        escapeHtml(fmtNum(grade.bucket || 0, 2)),
+        `${escapeHtml(fmtNum(grade.kg || 0, 3))} kg`,
+        escapeHtml(fmtMoney(rate)),
+        escapeHtml(fmtMoney(amount))
+      ], invoiceColumnWidths, index % 2 ? 'invoice-line-alt' : '', invoiceAlignments);
     }).join('');
+    const invoiceHeader = buildInvoiceFlexLine(['#', 'Grade', 'Buckets', 'Quantity', 'Rate / KG', 'Amount'], invoiceColumnWidths, 'invoice-line-header', invoiceAlignments);
+    const invoiceTotal = buildInvoiceFlexLine([
+      'Total',
+      `${escapeHtml(fmtNum(d.totalKg || 0, 3))} kg`,
+      '',
+      escapeHtml(fmtMoney(total))
+    ], [35, 20, 20, 25], 'invoice-line-total', ['left', 'right', 'right', 'right']);
     const title = isPartyCopy ? 'Cashew Order Invoice' : 'Cashew Purchase Invoice';
     const metaLabels = isPartyCopy
       ? { partyRole: 'Bill To', type: 'Sales Invoice' }
@@ -319,24 +355,32 @@ function buildDealPdfHtml(deal, templateName = 'party') {
           <div><small>Product</small><strong>${escapeHtml(settings.productName || 'Cashew')}</strong></div>
         </div>
         <div class="invoice-parties"><div class="card"><h3>${isPartyCopy ? 'Seller' : metaLabels.partyRole}</h3><p>${seller}</p></div><div class="card"><h3>${isPartyCopy ? metaLabels.partyRole : 'Buyer'}</h3><p>${buyer}</p></div></div>
-        <table class="invoice-table"><colgroup><col style="width:6%"><col style="width:18%"><col style="width:14%"><col style="width:20%"><col style="width:19%"><col style="width:23%"></colgroup><thead><tr><th>#</th><th>Grade</th><th>Buckets</th><th>Quantity</th><th>Rate / KG</th><th>Amount</th></tr></thead><tbody>${rows}</tbody>
-          <tfoot><tr><th colspan="3">Total</th><th>${escapeHtml(fmtNum(d.totalKg || 0, 3))} kg</th><th></th><th>${escapeHtml(fmtMoney(total))}</th></tr></tfoot>
-        </table>
+        <div class="invoice-lines">${invoiceHeader}${rows}${invoiceTotal}</div>
         <div class="invoice-bottom"><div class="invoice-quantity">Total quantity<br><strong>${escapeHtml(fmtNum(d.totalKg || 0, 3))} kg</strong></div><div class="invoice-total-card"><span>Invoice Total</span><strong>${escapeHtml(fmtMoney(total))}</strong></div></div>
         <div class="invoice-signature"><strong>For ${company}</strong>Authorized Signatory</div>
         <div class="invoice-footer">Thank you for your business · ${company}</div>
       </div></div>`;
   }
 
-  const rows = d.grades.map((g) => {
+  const adminColumnWidths = [14, 12, 16, 19, 19, 20];
+  const adminAlignments = ['left', 'right', 'right', 'right', 'right', 'right'];
+  const rows = d.grades.map((g, index) => {
     if (template === 'party') {
       return `<tr><td>${escapeHtml(g.grade || '—')}</td><td>${escapeHtml(fmtNum(g.bucket || 0, 2))}</td><td>${escapeHtml(fmtNum(g.kg || 0, 3))}</td><td>${escapeHtml(fmtMoney(g.partyRate || 0))}</td><td>${escapeHtml(fmtMoney(g.saleAmount || 0))}</td></tr>`;
     }
     if (template === 'factory') {
       return `<tr><td>${escapeHtml(g.grade || '—')}</td><td>${escapeHtml(fmtNum(g.bucket || 0, 2))}</td><td>${escapeHtml(fmtNum(g.kg || 0, 3))}</td><td>${escapeHtml(fmtMoney(g.factoryRate || 0))}</td><td>${escapeHtml(fmtMoney(g.purchaseAmount || 0))}</td></tr>`;
     }
-    return `<tr><td>${escapeHtml(g.grade || '—')}</td><td>${escapeHtml(fmtNum(g.bucket || 0, 2))}</td><td>${escapeHtml(fmtNum(g.kg || 0, 3))}</td><td>${escapeHtml(fmtMoney(g.partyRate || 0))}</td><td>${escapeHtml(fmtMoney(g.factoryRate || 0))}</td><td>${escapeHtml(fmtMoney(g.commissionPerKg || 0))}</td></tr>`;
+    return buildInvoiceFlexLine([
+      escapeHtml(g.grade || '—'),
+      escapeHtml(fmtNum(g.bucket || 0, 2)),
+      escapeHtml(fmtNum(g.kg || 0, 3)),
+      escapeHtml(fmtMoney(g.partyRate || 0)),
+      escapeHtml(fmtMoney(g.factoryRate || 0)),
+      escapeHtml(fmtMoney(g.commissionPerKg || 0))
+    ], adminColumnWidths, index % 2 ? 'invoice-line-alt' : '', adminAlignments);
   }).join('');
+  const adminHeader = buildInvoiceFlexLine(['Grade', 'Bucket', 'KG', 'Selling Rate', 'Purchase Rate', 'Commission'], adminColumnWidths, 'invoice-line-header', adminAlignments);
 
   const headerTitle = getDealTemplateLabel(template);
   const summaryPills = template === 'party' ? `
@@ -445,17 +489,7 @@ function buildDealPdfHtml(deal, templateName = 'party') {
           </div>
         </div>
 
-        <table class="${template === 'admin' ? 'admin-table' : ''}">
-          <thead>
-            <tr>
-              <th>Grade</th>
-              <th>Bucket</th>
-              <th>KG</th>
-              ${template === 'party' ? '<th>Selling Rate</th><th>Amount</th>' : template === 'factory' ? '<th>Purchase Rate</th><th>Amount</th>' : '<th>Selling Rate</th><th>Purchase Rate</th><th>Commission</th>'}
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div class="invoice-lines ${template === 'admin' ? 'admin-line-list' : ''}">${adminHeader}${rows}</div>
         ${template === 'admin' ? `<div class="admin-amounts"><h3>Grade • Profit • Sale Amount</h3>${d.grades.map((g) => `<div class="admin-amount-row"><span>${escapeHtml(g.grade || '—')}</span><span>Profit: ${escapeHtml(fmtMoney(g.profit || 0))}</span><strong>${escapeHtml(fmtMoney(g.saleAmount || 0))}</strong></div>`).join('')}<div class="admin-amount-total">Total Profit: ${escapeHtml(fmtMoney(d.totalProfit || 0))} &nbsp; | &nbsp; Total Sale Amount: ${escapeHtml(fmtMoney(d.totalSale || 0))}</div></div>` : ''}
 
         <div class="note"><strong>Remarks:</strong> ${escapeHtml(d.remarks || 'No remarks captured.')}</div>
@@ -482,6 +516,8 @@ function renderPreviewPanel(previewPane, deal, templateName, blob, fileName) {
         <button type="button" class="btn btn-secondary" id="printPdfBtn">Print PDF</button>
       </div>
       <style>
+        #pdfCenterPreview .pdf-preview-document .pdf-shell *, #pdfCenterPreview .pdf-preview-document .pdf-shell *::before, #pdfCenterPreview .pdf-preview-document .pdf-shell *::after { animation: none !important; transition: none !important; }
+        #pdfCenterPreview .pdf-preview-document .pdf-shell .card { opacity: 1 !important; }
         #pdfCenterPreview .pdf-preview-document .pdf-shell { width: 100%; max-width: 210mm; margin: 0 auto; padding: 0; }
         #pdfCenterPreview .pdf-preview-document .pdf-page { width: 100%; max-width: 100%; min-height: 0; margin: 0 auto; padding: 24px; overflow: hidden; }
         #pdfCenterPreview .pdf-preview-document .brand { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 2px solid #166534; }
@@ -512,13 +548,19 @@ function renderPreviewPanel(previewPane, deal, templateName, blob, fileName) {
         #pdfCenterPreview .pdf-preview-document .invoice-copy-page table:not(.admin-table) { font-size: 14px; }
         #pdfCenterPreview .pdf-preview-document .invoice-copy-page table:not(.admin-table) th { font-size: 11px; font-weight: 700; }
         #pdfCenterPreview .pdf-preview-document .invoice-copy-page table:not(.admin-table) td { font-size: 14px; font-weight: 600; }
+        #pdfCenterPreview .pdf-preview-document .invoice-lines { width: 100%; max-width: 100%; margin-top: 0; overflow: hidden; border: 1px solid #e1e9e1; border-radius: 8px; }
+        #pdfCenterPreview .pdf-preview-document .invoice-line { display: flex; width: 100%; min-width: 0; }
+        #pdfCenterPreview .pdf-preview-document .invoice-line > span { display: block; flex-shrink: 0; min-width: 0; padding: 8px 4px; color: #263a2d; font-size: 12px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+        #pdfCenterPreview .pdf-preview-document .invoice-line-header > span { background: #14532d; color: #fff; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+        #pdfCenterPreview .pdf-preview-document .invoice-line-alt > span { background: #f8faf8; }
+        #pdfCenterPreview .pdf-preview-document .invoice-line-total > span { background: #edf5ee; color: #14532d; font-weight: 800; }
+        #pdfCenterPreview .pdf-preview-document .admin-line-list { margin-top: 16px; }
+        #pdfCenterPreview .pdf-preview-document .admin-line-list .invoice-line > span { padding: 5px 3px; font-size: 9px; font-weight: 700; }
+        #pdfCenterPreview .pdf-preview-document .admin-line-list .invoice-line-header > span { font-size: 8px; }
         #pdfCenterPreview .pdf-preview-document .admin-copy-page .summary .pill { font-size: 13px; }
         #pdfCenterPreview .pdf-preview-document .admin-copy-page .summary .pill strong { font-size: 16px; }
         #pdfCenterPreview .pdf-preview-document .admin-copy-page .card h3 { font-size: 13px; }
         #pdfCenterPreview .pdf-preview-document .admin-copy-page .card p { font-size: 12px; font-weight: 600; }
-        #pdfCenterPreview .pdf-preview-document .admin-copy-page table.admin-table { font-size: 9px; }
-        #pdfCenterPreview .pdf-preview-document .admin-copy-page table.admin-table th { font-size: 8px; font-weight: 700; }
-        #pdfCenterPreview .pdf-preview-document .admin-copy-page table.admin-table td { font-size: 9px; font-weight: 600; }
         #pdfCenterPreview .pdf-preview-document .admin-copy-page .admin-amounts h3 { font-size: 12px; }
         #pdfCenterPreview .pdf-preview-document .admin-copy-page .admin-amount-row { font-size: 11px; font-weight: 600; }
         #pdfCenterPreview .pdf-preview-document .admin-copy-page .admin-amount-total { font-size: 12px; }
