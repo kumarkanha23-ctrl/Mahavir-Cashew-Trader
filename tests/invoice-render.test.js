@@ -29,11 +29,12 @@ function test() {
   expectContains(source, 'waitForPdfRender');
   expectContains(source, 'document.fonts.ready');
   expectContains(source, 'document.body.appendChild(wrapper)');
-  expectContains(source, 'scrollWidth');
   expectContains(source, 'scrollHeight');
   expectContains(source, 'scale: 2');
   expectContains(source, "querySelector('.pdf-page')");
-  expectContains(source, 'width: 186mm');
+  expectContains(source, 'width: 210mm');
+  expectContains(source, 'getBoundingClientRect().width');
+  expectContains(source, "card.style.setProperty('opacity', '1', 'important')");
   expectContains(source, 'padding: 10mm');
   expectContains(source, 'overflow-x: hidden');
   expectContains(source, 'img, svg');

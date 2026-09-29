@@ -9,7 +9,7 @@ const PRINT_STYLE = `
   .pdf-shell, .pdf-shell *, .pdf-shell *::before, .pdf-shell *::after { animation: none !important; transition: none !important; }
   .pdf-shell .card { opacity: 1 !important; }
   .pdf-shell .card:hover { box-shadow: none !important; transform: none !important; }
-  .pdf-page { width: 186mm; max-width: 100%; min-height: 0; margin: 0 auto; padding: 10mm; background: #fff; overflow: hidden; overflow-x: hidden; border-radius: 12px; box-sizing: border-box; overflow-wrap: anywhere; word-break: break-word; }
+  .pdf-page { width: 210mm; max-width: 100%; min-height: 0; margin: 0 auto; padding: 10mm; background: #fff; overflow: hidden; overflow-x: hidden; border-radius: 12px; box-sizing: border-box; overflow-wrap: anywhere; word-break: break-word; }
   .brand { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 2px solid #166534; page-break-inside: avoid; break-inside: avoid; }
   .brand h1 { margin: 0; font-size: 24px; color: #166534; }
   .brand .badge { padding: 6px 10px; border-radius: 999px; background: #f0fdf4; color: #166534; font-size: 12px; font-weight: 700; text-transform: uppercase; }
@@ -123,7 +123,7 @@ const PRINT_STYLE = `
   @media print {
     body { background: #fff; }
     .pdf-shell { padding: 0; width: 210mm; max-width: 210mm; }
-    .pdf-page { box-shadow: none; border-radius: 0; width: 186mm; max-width: 186mm; padding: 10mm; }
+    .pdf-page { box-shadow: none; border-radius: 0; width: 210mm; max-width: 210mm; padding: 10mm; }
   }
   @media (max-width: 700px) {
     .grid { flex-direction: column; }
@@ -204,12 +204,18 @@ async function createPdfBlobFromHtml(htmlContent, options = {}) {
   wrapper.style.boxSizing = 'border-box';
 
   const printable = document.createElement('div');
-  printable.style.width = '190mm';
-  printable.style.maxWidth = '190mm';
+  printable.style.width = '210mm';
+  printable.style.maxWidth = '210mm';
   printable.style.boxSizing = 'border-box';
-  printable.style.margin = '0 auto';
+  printable.style.margin = '0';
   printable.style.background = '#fff';
   printable.innerHTML = `<style>${PRINT_STYLE}</style>${htmlContent}`;
+  printable.querySelectorAll('.pdf-shell .card').forEach((card) => {
+    card.style.setProperty('animation', 'none', 'important');
+    card.style.setProperty('transition', 'none', 'important');
+    card.style.setProperty('opacity', '1', 'important');
+    card.style.setProperty('transform', 'none', 'important');
+  });
   wrapper.appendChild(printable);
   document.body.appendChild(wrapper);
   const invoiceElement = printable.querySelector('.pdf-page') || printable;
@@ -218,7 +224,7 @@ async function createPdfBlobFromHtml(htmlContent, options = {}) {
   try {
     await ensureHtml2Pdf();
     await waitForPdfRender(invoiceElement);
-    const targetWidth = Math.max(1, Math.ceil(invoiceElement.scrollWidth || invoiceElement.getBoundingClientRect().width || 1));
+    const targetWidth = Math.max(1, Math.ceil(invoiceElement.getBoundingClientRect().width || 1));
     const targetHeight = Math.max(1, Math.ceil(invoiceElement.scrollHeight || 1));
     const opt = {
       margin: [0, 0, 0, 0],
@@ -231,6 +237,8 @@ async function createPdfBlobFromHtml(htmlContent, options = {}) {
         logging: false,
         scrollX: 0,
         scrollY: 0,
+        x: 0,
+        y: 0,
         width: targetWidth,
         height: targetHeight,
         windowWidth: targetWidth,
