@@ -1195,6 +1195,87 @@ export function getRateForFactory(grade, factoryId) {
   ) || null;
 }
 
+const SIBA_RATE_ASSIGNMENT_EXPECTED = [
+  { grade: '1st SW', factoryRate: 695, commissionPerKg: 5, partyRate: 700 },
+  { grade: '2nd SW', factoryRate: 630, commissionPerKg: 5, partyRate: 635 },
+  { grade: 'JH', factoryRate: 785, commissionPerKg: 5, partyRate: 790 },
+  { grade: 'K', factoryRate: 715, commissionPerKg: 5, partyRate: 720 },
+  { grade: 'Special JH', factoryRate: 755, commissionPerKg: 5, partyRate: 760 },
+  { grade: 'W160', factoryRate: 850, commissionPerKg: 5, partyRate: 855 },
+  { grade: 'W180', factoryRate: 855, commissionPerKg: 5, partyRate: 860 },
+  { grade: 'W210', factoryRate: 825, commissionPerKg: 5, partyRate: 830 },
+  { grade: 'W240', factoryRate: 805, commissionPerKg: 5, partyRate: 810 },
+  { grade: 'W320', factoryRate: 785, commissionPerKg: 5, partyRate: 790 }
+];
+
+function exactRateValue(actual, expected) {
+  return actual !== '' && actual !== null && actual !== undefined &&
+    Number.isFinite(Number(actual)) && Number(actual) === expected;
+}
+
+export function assignLegacyRatesToSiba() {
+  const sibaFactories = state.factories.filter((factory) =>
+    factory && typeof factory.name === 'string' && factory.name.trim().toLowerCase() === 'siba'
+  );
+  if (sibaFactories.length !== 1) {
+    return { assignedCount: 0, reason: `Expected exactly one SIBA factory; found ${sibaFactories.length}.` };
+  }
+
+  const sibaFactoryId = sibaFactories[0].id;
+  if (!sibaFactoryId) return { assignedCount: 0, reason: 'The SIBA factory has no ID; no rates were changed.' };
+  const alreadyAssigned = SIBA_RATE_ASSIGNMENT_EXPECTED.every((expected) => {
+    const matchingSiba = state.rates.filter((rate) =>
+      rate && rate.grade === expected.grade && rate.factoryId === sibaFactoryId
+    );
+    return matchingSiba.length === 1 &&
+      !state.rates.some((rate) => rate && rate.grade === expected.grade && !rate.factoryId) &&
+      exactRateValue(matchingSiba[0].factoryRate, expected.factoryRate) &&
+      exactRateValue(matchingSiba[0].commissionPerKg, expected.commissionPerKg) &&
+      exactRateValue(matchingSiba[0].partyRate, expected.partyRate);
+  });
+  if (alreadyAssigned) return { assignedCount: 0, reason: null };
+
+  const legacyRates = state.rates.filter((rate) => rate && !rate.factoryId);
+  if (legacyRates.length !== SIBA_RATE_ASSIGNMENT_EXPECTED.length) {
+    return { assignedCount: 0, reason: `Expected exactly 10 unassigned legacy rates; found ${legacyRates.length}.` };
+  }
+
+  const recordsToAssign = [];
+  for (const expected of SIBA_RATE_ASSIGNMENT_EXPECTED) {
+    const matchingLegacy = legacyRates.filter((rate) => rate.grade === expected.grade);
+    if (matchingLegacy.length !== 1) {
+      return {
+        assignedCount: 0,
+        reason: `${expected.grade}: expected exactly one unassigned legacy record; found ${matchingLegacy.length}.`
+      };
+    }
+    const [rate] = matchingLegacy;
+    if (!exactRateValue(rate.factoryRate, expected.factoryRate) ||
+        !exactRateValue(rate.commissionPerKg, expected.commissionPerKg) ||
+        !exactRateValue(rate.partyRate, expected.partyRate)) {
+      return {
+        assignedCount: 0,
+        reason: `${expected.grade}: stored rate values do not exactly match ${expected.factoryRate} / ${expected.commissionPerKg} / ${expected.partyRate}.`
+      };
+    }
+    const existingFactoryRate = state.rates.find((candidate) =>
+      candidate !== rate &&
+      candidate.grade === expected.grade &&
+      candidate.factoryId === sibaFactories[0].id
+    );
+    if (existingFactoryRate) {
+      return { assignedCount: 0, reason: `${expected.grade}: a rate already exists for SIBA; no records were changed.` };
+    }
+    recordsToAssign.push(rate);
+  }
+
+  recordsToAssign.forEach((rate) => {
+    rate.factoryId = sibaFactoryId;
+  });
+  persist();
+  return { assignedCount: recordsToAssign.length, reason: null };
+}
+
 export function copyRatesBetweenFactories(sourceFactoryId, targetFactoryId, replaceGrades = []) {
   if (!Array.isArray(replaceGrades)) throw new Error('Replacement grades must be provided as an array.');
   if (!sourceFactoryId || !targetFactoryId || sourceFactoryId === targetFactoryId) {
@@ -1754,6 +1835,15 @@ async function startAppForUser() {
         applyFirestoreData(data);
         saveStateToLocalStorage();
         dataReady = true;
+      }
+      if (Array.isArray(data?.rates) && Array.isArray(data?.factories)) {
+        const assignment = assignLegacyRatesToSiba();
+        if (assignment.assignedCount) {
+          toast(`Assigned ${assignment.assignedCount} existing rates to SIBA. Rate values and dates were preserved.`);
+        } else if (assignment.reason) {
+          console.warn('SIBA rate assignment skipped:', assignment.reason);
+          toast(`SIBA rate assignment skipped: ${assignment.reason}`, 'warn');
+        }
       }
       finalizeAppBootstrap();
       notify();
