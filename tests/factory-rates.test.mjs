@@ -12,7 +12,7 @@ vm.runInContext(`${appSource}
 persist = () => {};
 globalThis.testApp = {
   state, calcDeal, saveDeal, saveRate, saveFactory, findOrCreateFactory,
-  getRateForFactory, copyRatesBetweenFactories, assignLegacyRatesToSiba, normalizeDeal
+  getRateForFactory, copyRatesBetweenFactories, normalizeDeal
 };`, context);
 const app = context.testApp;
 const factoryA = 'factory-a';
@@ -74,45 +74,33 @@ for (const [bucket, expectedKg] of [[5, 50], [10, 100], [28, 280], [40, 400]]) {
   assert.equal(context.calcDeal({ bucket, factoryRate: 805, commissionPerKg: 5 }).kg, expectedKg);
 }
 
-const sibaValues = [
-  ['1st SW', 695, 700],
-  ['2nd SW', 630, 635],
-  ['JH', 785, 790],
-  ['K', 715, 720],
-  ['Special JH', 755, 760],
-  ['W160', 850, 855],
-  ['W180', 855, 860],
-  ['W210', 825, 830],
-  ['W240', 805, 810],
-  ['W320', 785, 790]
-];
-app.state.factories = [{ id: 'siba-id', name: 'SIBA' }];
-app.state.rates = sibaValues.map(([grade, factoryRate, partyRate]) => ({
-  id: `legacy-${grade}`,
-  grade,
-  factoryRate,
-  commissionPerKg: 5,
-  partyRate,
-  updatedAt: '2026-08-10T00:00:00.000Z'
-}));
-const sibaRatesBefore = JSON.parse(JSON.stringify(app.state.rates));
-app.state.rates[9].partyRate++;
-const invalidSibaRates = JSON.stringify(app.state.rates);
-assert.throws(() => app.assignLegacyRatesToSiba(), /Cannot safely assign W320/);
-assert.equal(JSON.stringify(app.state.rates), invalidSibaRates);
-app.state.rates[9].partyRate = 790;
-assert.equal(app.assignLegacyRatesToSiba(), 10);
-app.state.rates.forEach((rate, index) => {
-  const { factoryId: _factoryId, ...beforeAssignment } = sibaRatesBefore[index];
-  const { factoryId, ...afterAssignment } = rate;
-  assert.equal(factoryId, 'siba-id');
-  assert.equal(JSON.stringify(afterAssignment), JSON.stringify(beforeAssignment));
-});
-assert.equal(app.assignLegacyRatesToSiba(), 0);
-
 const dealsSource = await readFile(new URL('../deals.js', import.meta.url), 'utf8');
 assert.ok(dealsSource.includes("container.querySelector('[name=factoryName]').addEventListener('change'"));
 assert.ok(dealsSource.includes('getRateForFactory(grade, factory?.id)'));
 assert.ok(dealsSource.includes('copyRatesBetweenFactories(sourceSelect.value, targetSelect.value'));
+assert.ok(dealsSource.includes('READ ONLY — NO DATA WILL BE CHANGED'));
+assert.ok(dealsSource.includes('container.querySelector(\'#diagnoseW160Btn\').addEventListener'));
+assert.ok(dealsSource.includes('JSON.stringify(rate, null, 2)'));
+assert.ok(!appSource.includes('assignLegacyRatesToSiba'));
+
+const dealsContext = vm.createContext({ console, JSON, Set, esc: (value) => String(value) });
+vm.runInContext(`${dealsSource
+  .replace(/^import\s[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '')
+  .replace(/^export\s+/gm, '')}
+globalThis.testDiagnosis = diagnoseW160Rates;`, dealsContext);
+const diagnose = dealsContext.testDiagnosis;
+const exactW160 = { id: 'w160-1', grade: 'W160', factoryRate: 850, commissionPerKg: 5, partyRate: 855 };
+const factories = [{ id: 'siba-id', name: 'SIBA' }, { id: 'other-id', name: 'Other Factory' }];
+assert.equal(diagnose([], factories).primaryCode, 'E');
+assert.equal(diagnose([{ ...exactW160 }], factories).primaryCode, 'A');
+assert.equal(diagnose([{ ...exactW160, factoryRate: 851 }], factories).primaryCode, 'B');
+assert.equal(diagnose([{ ...exactW160 }, { ...exactW160, id: 'w160-2' }], factories).primaryCode, 'C');
+assert.equal(diagnose([{ ...exactW160, factoryId: 'siba-id' }], factories).primaryCode, 'D');
+assert.equal(diagnose([{ ...exactW160, factoryId: 'other-id' }], factories).primaryCode, 'F');
+const rawDiagnosticRecord = { ...exactW160, factoryRate: '850', customField: { untouched: true } };
+const rawBeforeDiagnostic = JSON.stringify(rawDiagnosticRecord);
+const diagnosticResult = diagnose([rawDiagnosticRecord], factories);
+assert.equal(diagnosticResult.primaryCode, 'B');
+assert.equal(JSON.stringify(rawDiagnosticRecord), rawBeforeDiagnostic);
 
 console.log('Factory-wise rate, safe copy, deal snapshot, and bucket/KG regression checks passed.');

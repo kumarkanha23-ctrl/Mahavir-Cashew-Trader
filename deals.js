@@ -11,6 +11,122 @@ import { exportDealsExcel, importRatesFromCsv } from './excel.js';
 const LEGACY_RATE_FACTORY = '__legacy_rates__';
 let activeRateFilter = 'all';
 
+function diagnoseW160Rates(rates, factories) {
+  const records = rates.filter((rate) =>
+    rate && typeof rate.grade === 'string' && rate.grade.trim().toLowerCase() === 'w160'
+  );
+  const sibaFactoryIds = new Set(factories
+    .filter((factory) => String(factory?.name || '').trim().toLowerCase() === 'siba')
+    .map((factory) => factory.id));
+  const expected = { factoryRate: 850, commissionPerKg: 5, partyRate: 855 };
+  const analyses = records.map((rate) => {
+    const hasFactoryId = rate.factoryId !== undefined && rate.factoryId !== null && String(rate.factoryId).trim() !== '';
+    const factory = factories.find((item) => item && item.id === rate.factoryId);
+    return {
+      rate,
+      factory,
+      assigned: hasFactoryId,
+      assignedToSiba: hasFactoryId && sibaFactoryIds.has(rate.factoryId),
+      valuesMatch: rate.factoryRate === expected.factoryRate &&
+        rate.commissionPerKg === expected.commissionPerKg &&
+        rate.partyRate === expected.partyRate
+    };
+  });
+
+  let primaryCode;
+  let primaryReason;
+  if (!analyses.length) {
+    primaryCode = 'E';
+    primaryReason = 'MISSING W160 — no W160 rate records were found.';
+  } else if (analyses.length > 1) {
+    primaryCode = 'C';
+    primaryReason = `MULTIPLE W160 RECORDS — found ${analyses.length} W160 rate records.`;
+  } else if (analyses[0].assignedToSiba) {
+    primaryCode = 'D';
+    primaryReason = 'W160 ALREADY ASSIGNED TO SIBA.';
+  } else if (!analyses[0].valuesMatch) {
+    primaryCode = 'B';
+    primaryReason = 'RATE VALUE MISMATCH — one or more raw stored values differ from the expected values.';
+  } else if (!analyses[0].assigned) {
+    primaryCode = 'A';
+    primaryReason = 'EXACT MATCH — one unassigned W160 record matches all expected values.';
+  } else {
+    primaryCode = 'F';
+    primaryReason = 'OTHER REASON — the matching W160 rate is assigned to a factory other than SIBA.';
+  }
+
+  const additionalReasons = [];
+  if (analyses.some((item) => item.assignedToSiba) && primaryCode !== 'D') {
+    additionalReasons.push('D. W160 ALREADY ASSIGNED TO SIBA — at least one listed record is assigned to SIBA.');
+  }
+  if (analyses.some((item) => !item.valuesMatch) && primaryCode !== 'B') {
+    additionalReasons.push('B. RATE VALUE MISMATCH — at least one listed record differs from the expected values.');
+  }
+  return { records: analyses, expected, primaryCode, primaryReason, additionalReasons };
+}
+
+function rawDiagnosticValue(value) {
+  return value === undefined ? '(missing)' : JSON.stringify(value);
+}
+
+function showW160Diagnostic() {
+  const { rates, factories } = getState();
+  const diagnostic = diagnoseW160Rates(rates, factories);
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  const recordCards = diagnostic.records.length ? diagnostic.records.map(({ rate, factory, assigned, assignedToSiba }) => {
+    const fullObject = JSON.stringify(rate, null, 2);
+    const factoryName = factory ? factory.name : (assigned ? '(factory not found)' : '(unassigned)');
+    const status = assignedToSiba
+      ? 'Assigned to SIBA'
+      : assigned ? `Assigned to ${factoryName}` : 'Unassigned (legacy)';
+    return `<article class="w160-record">
+      <h4>W160 Record</h4>
+      <dl>
+        <dt>Record ID</dt><dd><code>${esc(rawDiagnosticValue(rate.id))}</code></dd>
+        <dt>Grade</dt><dd><code>${esc(rawDiagnosticValue(rate.grade))}</code></dd>
+        <dt>Factory ID</dt><dd><code>${esc(rawDiagnosticValue(rate.factoryId))}</code></dd>
+        <dt>Factory Name</dt><dd>${esc(factoryName)}</dd>
+        <dt>Factory Rate</dt><dd><code>${esc(rawDiagnosticValue(rate.factoryRate))}</code></dd>
+        <dt>Commission</dt><dd><code>${esc(rawDiagnosticValue(rate.commissionPerKg))}</code></dd>
+        <dt>Party Rate</dt><dd><code>${esc(rawDiagnosticValue(rate.partyRate))}</code></dd>
+        <dt>Assignment</dt><dd>${esc(status)}</dd>
+      </dl>
+      <details>
+        <summary>Full raw rate object</summary>
+        <pre>${esc(fullObject)}</pre>
+      </details>
+    </article>`;
+  }).join('') : '<p class="empty">No W160 rate records found.</p>';
+
+  overlay.innerHTML = `
+    <section class="modal-box w160-diagnostic-modal" role="dialog" aria-modal="true" aria-labelledby="w160DiagnosticTitle">
+      <h3 id="w160DiagnosticTitle">Diagnose W160</h3>
+      <p class="w160-readonly-warning">READ ONLY — NO DATA WILL BE CHANGED</p>
+      <p class="hint">Read from the current application state used by Rate Master (Firestore sync when available, with LocalStorage-backed state).</p>
+      <div class="w160-expected">
+        <strong>EXPECTED SIBA W160</strong>
+        <span>Factory Rate = ₹850</span>
+        <span>Commission = ₹5</span>
+        <span>Party Rate = ₹855</span>
+      </div>
+      <p class="w160-diagnostic-result"><strong>Diagnostic ${diagnostic.primaryCode}:</strong> ${esc(diagnostic.primaryReason)}</p>
+      ${diagnostic.additionalReasons.length
+        ? `<ul class="w160-additional-results">${diagnostic.additionalReasons.map((reason) => `<li>${esc(reason)}</li>`).join('')}</ul>`
+        : ''}
+      <p><strong>W160 records found:</strong> ${diagnostic.records.length}</p>
+      <div class="w160-record-list">${recordCards}</div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" data-w160-close>Close</button>
+      </div>
+    </section>`;
+  overlay.querySelector('[data-w160-close]').addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
+}
+
 function renderCopyLotModal() {
   const { factories, rates } = getState();
   const sourceFactories = factories.filter((factory) => rates.some((rate) => rate.factoryId === factory.id));
@@ -197,6 +313,7 @@ export function renderRateMaster(container) {
         <input type="file" accept=".csv" id="importRatesCsv" hidden />
       </label>
       <button type="button" class="btn btn-secondary" id="copyLotBtn">Copy Lot</button>
+      <button type="button" class="btn btn-secondary" id="diagnoseW160Btn">Diagnose W160</button>
     </section>
     <section class="tableBox">
       <h2>Rate Master</h2>
@@ -261,6 +378,7 @@ export function renderRateMaster(container) {
     renderRateMaster(container);
   });
   container.querySelector('#copyLotBtn').addEventListener('click', renderCopyLotModal);
+  container.querySelector('#diagnoseW160Btn').addEventListener('click', showW160Diagnostic);
 
   container.querySelectorAll('[data-rate-id]').forEach((btn) => {
     btn.addEventListener('click', () => {
