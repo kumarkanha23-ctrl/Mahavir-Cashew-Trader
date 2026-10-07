@@ -111,7 +111,8 @@ const firebaseSource = await readFile(new URL('../firebase.js', import.meta.url)
 assert.ok(dealsSource.includes("container.querySelector('[name=factoryName]').addEventListener('change'"));
 assert.ok(dealsSource.includes('getRateForFactory(grade, factory?.id)'));
 assert.ok(dealsSource.includes('copyRatesBetweenFactories(sourceSelect.value, targetSelect.value'));
-assert.ok(dealsSource.includes('Assign Existing Rates to SIBA'));
+assert.ok(!dealsSource.includes('Assign Existing Rates to SIBA'));
+assert.ok(!dealsSource.includes('assignSibaRatesBtn'));
 assert.ok(dealsSource.includes('getSibaRateAssignmentPreflight()'));
 assert.ok(dealsSource.includes('Firestore Doc ID'));
 assert.ok(!dealsSource.includes('diagnoseSibaMapping'));

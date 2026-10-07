@@ -307,7 +307,6 @@ export function renderRateMaster(container) {
         <input type="file" accept=".csv" id="importRatesCsv" hidden />
       </label>
       <button type="button" class="btn btn-secondary" id="copyLotBtn">Copy Lot</button>
-      <button type="button" class="btn btn-secondary" id="assignSibaRatesBtn">Assign Existing Rates to SIBA</button>
     </section>
     <section class="tableBox">
       <h2>Rate Master</h2>
@@ -372,9 +371,6 @@ export function renderRateMaster(container) {
     renderRateMaster(container);
   });
   container.querySelector('#copyLotBtn').addEventListener('click', renderCopyLotModal);
-  container.querySelector('#assignSibaRatesBtn').addEventListener('click', () => {
-    renderSibaRateAssignmentModal(container);
-  });
 
   container.querySelectorAll('[data-rate-id]').forEach((btn) => {
     btn.addEventListener('click', () => {
