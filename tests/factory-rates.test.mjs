@@ -7,12 +7,18 @@ appSource = appSource
   .replace(/^import\s[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '')
   .replace(/^export\s+/gm, '')
   .replace(/\nbootstrap\(\);\s*$/, '');
-const context = vm.createContext({ console, Date, Math, Intl, URLSearchParams });
+const firestoreRateWrites = [];
+const localStorageWrites = [];
+const context = vm.createContext({
+  console, Date, Math, Intl, URLSearchParams,
+  saveRatesDocumentToFirestore: async (rates) => firestoreRateWrites.push(JSON.parse(JSON.stringify(rates))),
+  localStorage: { setItem: (key, value) => localStorageWrites.push([key, value]) }
+});
 vm.runInContext(`${appSource}
 persist = () => {};
 globalThis.testApp = {
   state, calcDeal, saveDeal, saveRate, saveFactory, findOrCreateFactory,
-  getRateForFactory, copyRatesBetweenFactories, normalizeDeal
+  getRateForFactory, copyRatesBetweenFactories, assignExistingRatesToSiba, normalizeDeal
 };`, context);
 const app = context.testApp;
 const factoryA = 'factory-a';
@@ -90,80 +96,70 @@ const dealsSource = await readFile(new URL('../deals.js', import.meta.url), 'utf
 assert.ok(dealsSource.includes("container.querySelector('[name=factoryName]').addEventListener('change'"));
 assert.ok(dealsSource.includes('getRateForFactory(grade, factory?.id)'));
 assert.ok(dealsSource.includes('copyRatesBetweenFactories(sourceSelect.value, targetSelect.value'));
-assert.ok(dealsSource.includes('READ ONLY — NO DATA WILL BE CHANGED'));
-assert.ok(dealsSource.includes('container.querySelector(\'#diagnoseSibaBtn\').addEventListener'));
-assert.ok(dealsSource.includes('JSON.stringify(rate, null, 2)'));
-assert.ok(dealsSource.includes(".get({ source: 'server' })"));
+assert.ok(dealsSource.includes('Assign Existing Rates to SIBA'));
+assert.ok(!dealsSource.includes('diagnoseSibaMapping'));
+assert.ok(!dealsSource.includes('READ ONLY — NO DATA WILL BE CHANGED'));
 assert.ok(!appSource.includes('assignLegacyRatesToSiba'));
 assert.ok(!appSource.includes('SIBA_RATE_ASSIGNMENT_EXPECTED'));
 
-const serverSnapshot = (id, payload) => ({
-  exists: true,
-  ref: { id },
-  data: () => ({ payload })
-});
-let serverReadCalls = 0;
-const serverDocuments = {
-  rates: sibaMappingValues.map(([grade, factoryRate, partyRate]) => ({
-    id: `legacy-${grade}`, grade, factoryRate, commissionPerKg: 5, partyRate
-  })),
-  factories: [{ id: 'siba-id', name: ' Siba ', active: true }]
-};
-const fakeFirestore = {
-  collection: (collectionName) => {
-    assert.equal(collectionName, 'users');
-    return { doc: (userId) => {
-      assert.equal(userId, 'live-user');
-      return { collection: (subcollection) => {
-        assert.equal(subcollection, 'erp');
-        return { doc: (docId) => ({
-          get: async (options) => {
-            assert.deepEqual(JSON.parse(JSON.stringify(options)), { source: 'server' });
-            serverReadCalls++;
-            return serverSnapshot(docId, serverDocuments[docId]);
-          }
-        }) };
-      } };
-    } };
-  }
-};
-const dealsContext = vm.createContext({
-  console,
-  JSON,
-  Set,
-  Number,
-  Promise,
-  isFirestoreReady: () => true,
-  isUserSignedIn: () => true,
-  getAuth: () => ({ currentUser: { uid: 'live-user' } }),
-  getFirestore: () => fakeFirestore
-});
-vm.runInContext(`${dealsSource
-  .replace(/^import\s[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '')
-  .replace(/^export\s+/gm, '')}
-globalThis.testDiagnosis = diagnoseSibaMapping;
-globalThis.testReadSibaMapping = readSibaMappingFromFirestore;`, dealsContext);
-const diagnose = dealsContext.testDiagnosis;
-const exactRecords = sibaMappingValues.map(([grade, factoryRate, partyRate]) => ({
-  id: `legacy-${grade}`, grade, factoryRate, commissionPerKg: 5, partyRate
+app.state.factories = [{ id: 'siba-id', name: ' Siba ' }];
+app.state.rates = sibaMappingValues.map(([grade, factoryRate, partyRate], index) => ({
+  id: `legacy-${index}`,
+  grade,
+  factoryRate,
+  commissionPerKg: 5,
+  partyRate,
+  updatedAt: `2026-08-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`
 }));
-const sibaFactory = [{ id: 'siba-id', name: ' Siba ', active: true }];
-assert.equal(diagnose(exactRecords, sibaFactory).finalResult, 'All conditions pass');
-assert.equal(diagnose(exactRecords, []).finalResult, 'SIBA factory not found');
-assert.equal(diagnose(exactRecords, [...sibaFactory, { id: 'siba-2', name: 'SIBA' }]).finalResult, 'Multiple SIBA factories found');
-assert.equal(diagnose([...exactRecords, { ...exactRecords[0], id: 'duplicate' }], sibaFactory).finalResult, 'Legacy grade mismatch');
-assert.equal(diagnose([...exactRecords, { ...exactRecords[0], id: 'siba-copy', factoryId: 'siba-id' }], sibaFactory).finalResult, 'Existing SIBA rate conflict');
-assert.equal(diagnose(exactRecords.map((rate) => rate.grade === 'W160' ? { ...rate, grade: ' w160 ' } : rate), sibaFactory).finalResult, 'Grade normalization problem');
-assert.equal(diagnose(exactRecords.map((rate) => rate.grade === 'W160' ? { ...rate, partyRate: 856 } : rate), sibaFactory).finalResult, 'Rate value mismatch');
-assert.equal(diagnose(exactRecords.map((rate) => rate.grade === 'W160' ? { ...rate, factoryId: 'missing-factory' } : rate), sibaFactory).finalResult, 'Factory ID resolution problem');
-const diagnosticInputSnapshot = JSON.stringify(exactRecords);
-diagnose(exactRecords, sibaFactory);
-assert.equal(JSON.stringify(exactRecords), diagnosticInputSnapshot);
-assert.equal(serverReadCalls, 0);
-const readLiveData = await dealsContext.testReadSibaMapping();
-assert.equal(serverReadCalls, 2);
-assert.deepEqual(JSON.parse(JSON.stringify(readLiveData.factories)), serverDocuments.factories);
-assert.deepEqual(JSON.parse(JSON.stringify(readLiveData.rates)), serverDocuments.rates);
-assert.equal(diagnose(readLiveData.rates, readLiveData.factories).finalResult, 'All conditions pass');
+app.state.rates.find((rate) => rate.grade === 'W160').factoryRate = 1234;
+const ratesBeforeAssignment = JSON.parse(JSON.stringify(app.state.rates));
+const dealsBeforeAssignment = JSON.stringify(app.state.deals);
+assert.equal(await app.assignExistingRatesToSiba(), 10);
+assert.equal(app.state.rates.length, 10);
+assert.equal(firestoreRateWrites.length, 1);
+assert.equal(firestoreRateWrites[0].length, 10);
+app.state.rates.forEach((rate, index) => {
+  const { factoryId: _factoryId, ...actualUnassignedFields } = rate;
+  assert.deepEqual(JSON.parse(JSON.stringify(actualUnassignedFields)), ratesBeforeAssignment[index]);
+  assert.equal(rate.factoryId, 'siba-id');
+  assert.deepEqual(firestoreRateWrites[0][index], JSON.parse(JSON.stringify(rate)));
+});
+assert.equal(localStorageWrites.length, 1);
+assert.equal(localStorageWrites[0][0], 'mct:rates');
+assert.ok(!appSource.includes('assignExistingRatesToSiba();'));
+assert.equal(JSON.stringify(app.state.deals), dealsBeforeAssignment);
+assert.equal(await app.assignExistingRatesToSiba(), 0);
+assert.equal(firestoreRateWrites.length, 1);
 
-console.log('Factory-wise rate, read-only SIBA diagnostics, deal snapshot, and bucket/KG regression checks passed.');
+app.state.rates.find((rate) => rate.grade === 'W160').factoryRate = 1;
+assert.equal(await app.assignExistingRatesToSiba(), 0);
+assert.equal(firestoreRateWrites.length, 1);
+
+app.state.rates = sibaMappingValues.map(([grade, factoryRate, partyRate], index) => ({
+  id: `legacy-${index}`, grade, factoryRate, commissionPerKg: 5, partyRate
+}));
+app.state.factories.push({ id: 'siba-duplicate', name: 'siba' });
+const stateBeforeDuplicateFactory = JSON.stringify(app.state.rates);
+await assert.rejects(app.assignExistingRatesToSiba(), /exactly one factory named SIBA/);
+assert.equal(JSON.stringify(app.state.rates), stateBeforeDuplicateFactory);
+assert.equal(firestoreRateWrites.length, 1);
+
+app.state.factories = [{ id: 'siba-id', name: 'SIBA' }];
+app.state.rates = sibaMappingValues.slice(1).map(([grade, factoryRate, partyRate], index) => ({
+  id: `legacy-${index}`, grade, factoryRate, commissionPerKg: 5, partyRate
+}));
+const stateBeforeMissingGrade = JSON.stringify(app.state.rates);
+await assert.rejects(app.assignExistingRatesToSiba(), /exactly one existing 1st SW/);
+assert.equal(JSON.stringify(app.state.rates), stateBeforeMissingGrade);
+assert.equal(firestoreRateWrites.length, 1);
+
+app.state.rates = sibaMappingValues.map(([grade, factoryRate, partyRate], index) => ({
+  id: `legacy-${index}`, grade, factoryRate, commissionPerKg: 5, partyRate
+}));
+app.state.rates.push({ ...app.state.rates[0], id: 'duplicate-grade' });
+const stateBeforeDuplicateGrade = JSON.stringify(app.state.rates);
+await assert.rejects(app.assignExistingRatesToSiba(), /exactly one existing 1st SW rate record/);
+assert.equal(JSON.stringify(app.state.rates), stateBeforeDuplicateGrade);
+assert.equal(firestoreRateWrites.length, 1);
+
+console.log('Factory-wise rate, explicit SIBA assignment, deal snapshot, and bucket/KG regression checks passed.');

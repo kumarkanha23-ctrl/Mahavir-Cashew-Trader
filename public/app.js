@@ -14,6 +14,7 @@ import {
   startFirestoreSync,
   stopFirestoreSync,
   syncToCloud,
+  saveRatesDocumentToFirestore,
   isOnline,
   DEFAULT_FIREBASE_CONFIG,
   registerCloudImportHandler
@@ -1193,6 +1194,51 @@ export function getRateForFactory(grade, factoryId) {
   return scopedRate || state.rates.find((rate) =>
     !rate.factoryId && rate.grade.toLowerCase() === normalizedGrade
   ) || null;
+}
+
+const SIBA_RATE_GRADES = [
+  '1st SW', '2nd SW', 'JH', 'K', 'Special JH',
+  'W160', 'W180', 'W210', 'W240', 'W320'
+];
+
+export async function assignExistingRatesToSiba() {
+  if (!isAdminUser()) throw new Error('Only admins can assign rates to a factory.');
+  const sibaFactories = state.factories.filter((factory) =>
+    typeof factory?.name === 'string' && factory.name.trim().toLowerCase() === 'siba'
+  );
+  if (sibaFactories.length !== 1) {
+    throw new Error(`Expected exactly one factory named SIBA; found ${sibaFactories.length}.`);
+  }
+
+  const sibaFactoryId = sibaFactories[0].id;
+  if (!sibaFactoryId) throw new Error('The SIBA factory has no ID.');
+  const targetRates = [];
+  SIBA_RATE_GRADES.forEach((grade) => {
+    const matches = state.rates.filter((rate) => rate && rate.grade === grade);
+    if (matches.length !== 1) {
+      throw new Error(`Expected exactly one existing ${grade} rate record; found ${matches.length}. No rates were changed.`);
+    }
+    const [rate] = matches;
+    if (rate.factoryId && rate.factoryId !== sibaFactoryId) {
+      throw new Error(`${grade} is already assigned to another factory. No rates were changed.`);
+    }
+    targetRates.push(rate);
+  });
+
+  const targetRateSet = new Set(targetRates);
+  const updatedRates = state.rates.map((rate) =>
+    targetRateSet.has(rate) && rate.factoryId !== sibaFactoryId
+      ? { ...rate, factoryId: sibaFactoryId }
+      : rate
+  );
+  const assignedCount = targetRates.filter((rate) => rate.factoryId !== sibaFactoryId).length;
+  if (!assignedCount) return 0;
+
+  await saveRatesDocumentToFirestore(updatedRates);
+  state.rates = updatedRates;
+  lsSet(KEYS.RATES, updatedRates);
+  notify();
+  return assignedCount;
 }
 
 export function copyRatesBetweenFactories(sourceFactoryId, targetFactoryId, replaceGrades = []) {

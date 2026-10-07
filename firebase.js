@@ -331,6 +331,18 @@ export async function saveAllToFirestore(data) {
   }
 }
 
+export async function saveRatesDocumentToFirestore(rates) {
+  if (!isFirestoreReady() || !isUserSignedIn()) {
+    throw new Error('Firestore is not ready or no authenticated user is available.');
+  }
+  isSaving = true;
+  try {
+    await erpRef('rates').set(wrapPayload(rates));
+  } finally {
+    setTimeout(() => { isSaving = false; }, 300);
+  }
+}
+
 export async function clearFirestoreData() {
   if (!isFirestoreReady() || !isUserSignedIn()) return;
   isSaving = true;

@@ -3,288 +3,14 @@ import {
   fmtDate, fmtMoney, fmtNum, round, num, esc, toast, confirmAction, navigate, uid,
   ROUTES, today, DEFAULT_COMMISSION, filterDeals,
   findOrCreateFactory, copyRatesBetweenFactories, getRateForFactory,
+  assignExistingRatesToSiba,
   normalizeDeal, getDealGrades, dashboardMetrics, buildRecentDealsWhatsAppMessage,
   openWhatsApp, openWhatsAppForDeal
 } from './app.js';
 import { exportDealsExcel, importRatesFromCsv } from './excel.js';
-import { getAuth, getFirestore, isFirestoreReady, isUserSignedIn } from './firebase.js';
 
 const LEGACY_RATE_FACTORY = '__legacy_rates__';
 let activeRateFilter = 'all';
-
-const SIBA_MAPPING_EXPECTED = [
-  { grade: '1st SW', factoryRate: 695, commissionPerKg: 5, partyRate: 700 },
-  { grade: '2nd SW', factoryRate: 630, commissionPerKg: 5, partyRate: 635 },
-  { grade: 'JH', factoryRate: 785, commissionPerKg: 5, partyRate: 790 },
-  { grade: 'K', factoryRate: 715, commissionPerKg: 5, partyRate: 720 },
-  { grade: 'Special JH', factoryRate: 755, commissionPerKg: 5, partyRate: 760 },
-  { grade: 'W160', factoryRate: 850, commissionPerKg: 5, partyRate: 855 },
-  { grade: 'W180', factoryRate: 855, commissionPerKg: 5, partyRate: 860 },
-  { grade: 'W210', factoryRate: 825, commissionPerKg: 5, partyRate: 830 },
-  { grade: 'W240', factoryRate: 805, commissionPerKg: 5, partyRate: 810 },
-  { grade: 'W320', factoryRate: 785, commissionPerKg: 5, partyRate: 790 }
-];
-
-function unwrapDiagnosticDocument(snapshot) {
-  if (!snapshot.exists) throw new Error(`Firestore document "${snapshot.ref.id}" does not exist.`);
-  const document = snapshot.data();
-  const payload = document?.payload ?? document;
-  if (!Array.isArray(payload)) throw new Error(`Firestore document "${snapshot.ref.id}" does not contain an array payload.`);
-  return payload;
-}
-
-async function readSibaMappingFromFirestore() {
-  if (!isFirestoreReady()) throw new Error('Firestore is not ready. No diagnostic data was read.');
-  if (!isUserSignedIn()) throw new Error('No signed-in Firestore user. No diagnostic data was read.');
-  const uid = getAuth()?.currentUser?.uid;
-  if (!uid) throw new Error('Could not resolve the signed-in Firestore user ID. No diagnostic data was read.');
-
-  const userErp = getFirestore().collection('users').doc(uid).collection('erp');
-  const [ratesSnapshot, factoriesSnapshot] = await Promise.all([
-    userErp.doc('rates').get({ source: 'server' }),
-    userErp.doc('factories').get({ source: 'server' })
-  ]);
-  return {
-    rates: unwrapDiagnosticDocument(ratesSnapshot),
-    factories: unwrapDiagnosticDocument(factoriesSnapshot)
-  };
-}
-
-function sameRateValue(actual, expected) {
-  return actual !== '' && actual !== null && actual !== undefined &&
-    Number.isFinite(Number(actual)) && Number(actual) === expected;
-}
-
-function hasExactExpectedLegacyRecord(entry) {
-  return entry.legacyRecords.length === 1 && entry.gradeRecords.some((rate) =>
-    rate.grade === entry.expected.grade &&
-    sameRateValue(rate.factoryRate, entry.expected.factoryRate) &&
-    sameRateValue(rate.commissionPerKg, entry.expected.commissionPerKg) &&
-    sameRateValue(rate.partyRate, entry.expected.partyRate)
-  );
-}
-
-function diagnoseSibaMapping(rates, factories) {
-  const sibaFactories = factories.filter((factory) =>
-    typeof factory?.name === 'string' && factory.name.trim().toLowerCase() === 'siba'
-  );
-  const sibaIds = new Set(sibaFactories.map((factory) => factory.id).filter(Boolean));
-  const expectedEntries = SIBA_MAPPING_EXPECTED.map((expected) => {
-    const gradeRecords = rates.filter((rate) =>
-      typeof rate?.grade === 'string' && rate.grade.trim().toLowerCase() === expected.grade.toLowerCase()
-    );
-    const legacyRecords = gradeRecords.filter((rate) =>
-      rate.factoryId === undefined || rate.factoryId === null || String(rate.factoryId).trim() === ''
-    );
-    const sibaRecords = gradeRecords.filter((rate) => sibaIds.has(rate.factoryId));
-    return {
-      expected,
-      gradeRecords,
-      legacyRecords,
-      sibaRecords,
-      gradeNormalizationMismatch: gradeRecords.some((rate) => rate.grade !== expected.grade),
-      valueMismatch: gradeRecords.some((rate) =>
-        !sameRateValue(rate.factoryRate, expected.factoryRate) ||
-        !sameRateValue(rate.commissionPerKg, expected.commissionPerKg) ||
-        !sameRateValue(rate.partyRate, expected.partyRate)
-      )
-    };
-  });
-  const relevantRecords = rates.filter((rate) =>
-    typeof rate?.grade === 'string' &&
-    SIBA_MAPPING_EXPECTED.some((expected) => rate.grade.trim().toLowerCase() === expected.grade.toLowerCase())
-  );
-  const sibaRateRecords = expectedEntries.flatMap((entry) => entry.sibaRecords);
-  const unresolvedFactoryRecords = relevantRecords.filter((rate) =>
-    rate.factoryId !== undefined && rate.factoryId !== null && String(rate.factoryId).trim() !== '' &&
-    !factories.some((factory) => factory?.id === rate.factoryId)
-  );
-  const legacyRecords = relevantRecords.filter((rate) =>
-    rate.factoryId === undefined || rate.factoryId === null || String(rate.factoryId).trim() === ''
-  );
-  const unexpectedLegacyGrades = rates.filter((rate) => {
-    if (!rate || !(rate.factoryId === undefined || rate.factoryId === null || String(rate.factoryId).trim() === '')) return false;
-    return !SIBA_MAPPING_EXPECTED.some((expected) => rate.grade === expected.grade);
-  });
-
-  const checks = [
-    { label: 'Exactly one SIBA factory exists', passed: sibaFactories.length === 1, detail: `${sibaFactories.length} found.` },
-    { label: 'SIBA factory has an ID', passed: sibaFactories.length === 1 && Boolean(sibaFactories[0].id), detail: sibaFactories.length === 1 ? JSON.stringify(sibaFactories[0].id ?? null) : 'Cannot check until exactly one SIBA factory exists.' },
-    { label: 'All assigned factory IDs resolve', passed: unresolvedFactoryRecords.length === 0, detail: unresolvedFactoryRecords.length ? `${unresolvedFactoryRecords.length} records have unresolved factory IDs.` : 'All relevant assigned factory IDs resolve.' },
-    { label: 'No existing SIBA rate conflicts', passed: expectedEntries.every((entry) => entry.sibaRecords.length === 0), detail: expectedEntries.filter((entry) => entry.sibaRecords.length > 0).map((entry) => `${entry.expected.grade}: ${entry.sibaRecords.length}`).join(', ') || 'None found.' },
-    { label: 'Exactly 10 legacy records, one per expected grade', passed: legacyRecords.length === 10 && expectedEntries.every((entry) => entry.legacyRecords.length === 1) && unexpectedLegacyGrades.length === 0, detail: `${legacyRecords.length} matching legacy records; ${unexpectedLegacyGrades.length} other unassigned records.` },
-    { label: 'Legacy grades exactly match expected spelling', passed: !expectedEntries.some((entry) => entry.gradeNormalizationMismatch), detail: expectedEntries.filter((entry) => entry.gradeNormalizationMismatch).map((entry) => `${entry.expected.grade}: ${entry.gradeRecords.map((rate) => JSON.stringify(rate.grade)).join(', ')}`).join('; ') || 'All expected grade strings match exactly.' },
-    { label: 'Rate values match expected values', passed: !expectedEntries.some((entry) => entry.valueMismatch), detail: expectedEntries.filter((entry) => entry.valueMismatch).map((entry) => entry.expected.grade).join(', ') || 'All present records have expected values.' },
-    {
-      label: 'All 10 expected grades each have exactly one matching legacy record',
-      passed: expectedEntries.every(hasExactExpectedLegacyRecord),
-      detail: expectedEntries.filter((entry) => !hasExactExpectedLegacyRecord(entry)).map((entry) => entry.expected.grade).join(', ') || 'All 10 match.'
-    }
-  ];
-
-  let finalResult = 'All conditions pass';
-  if (!checks[0].passed) finalResult = sibaFactories.length ? 'Multiple SIBA factories found' : 'SIBA factory not found';
-  else if (!checks[1].passed) finalResult = 'Factory ID resolution problem';
-  else if (unresolvedFactoryRecords.length) finalResult = 'Factory ID resolution problem';
-  else if (expectedEntries.some((entry) => entry.sibaRecords.length)) finalResult = 'Existing SIBA rate conflict';
-  else if (expectedEntries.some((entry) => entry.gradeNormalizationMismatch)) finalResult = 'Grade normalization problem';
-  else if (legacyRecords.length !== 10 || unexpectedLegacyGrades.length || expectedEntries.some((entry) => entry.legacyRecords.length !== 1)) {
-    finalResult = 'Legacy grade mismatch';
-  }
-  else if (expectedEntries.some((entry) => entry.valueMismatch)) finalResult = 'Rate value mismatch';
-  else if (!checks[7].passed) finalResult = 'Mapping condition unexpectedly failing';
-
-  return {
-    factories,
-    sibaFactories,
-    rates,
-    expectedEntries,
-    relevantRecords,
-    sibaRateRecords,
-    unresolvedFactoryRecords,
-    legacyRecords,
-    checks,
-    finalResult
-  };
-}
-
-function diagnosticRaw(value) {
-  return value === undefined ? '(missing)' : JSON.stringify(value);
-}
-
-function renderSibaDiagnostic(diagnostic) {
-  const factoryRows = diagnostic.factories.map((factory, index) => `
-    <tr>
-      <td>${index + 1}</td>
-      <td><code>${esc(diagnosticRaw(factory?.id))}</code></td>
-      <td>${esc(diagnosticRaw(factory?.name))}</td>
-      <td>${esc(diagnosticRaw(factory?.active))}</td>
-    </tr>`).join('') || '<tr><td colspan="4" class="empty">No factory records found.</td></tr>';
-
-  const gradeRows = diagnostic.expectedEntries.map(({ expected, gradeRecords, legacyRecords, sibaRecords }) => {
-    const records = gradeRecords.length ? gradeRecords.map((rate) => {
-      const factoryIdIsSet = rate.factoryId !== undefined && rate.factoryId !== null && String(rate.factoryId).trim() !== '';
-      const factory = diagnostic.factories.find((item) => item?.id === rate.factoryId);
-      const exactMatch = rate.grade === expected.grade &&
-        sameRateValue(rate.factoryRate, expected.factoryRate) &&
-        sameRateValue(rate.commissionPerKg, expected.commissionPerKg) &&
-        sameRateValue(rate.partyRate, expected.partyRate);
-      const factoryName = factory ? factory.name : (factoryIdIsSet ? '(unresolved factory ID)' : '(unassigned)');
-      return `<tr>
-        <td><code>${esc(diagnosticRaw(rate.id))}</code></td>
-        <td><code>${esc(diagnosticRaw(rate.grade))}</code></td>
-        <td><code>${esc(diagnosticRaw(rate.factoryId))}</code></td>
-        <td>${esc(factoryName)}</td>
-        <td><code>${esc(diagnosticRaw(rate.factoryRate))}</code></td>
-        <td><code>${esc(diagnosticRaw(rate.commissionPerKg))}</code></td>
-        <td><code>${esc(diagnosticRaw(rate.partyRate))}</code></td>
-        <td>${factoryIdIsSet ? 'Assigned' : 'Unassigned'}</td>
-        <td>${exactMatch ? 'YES' : 'NO'}</td>
-        <td><details><summary>Raw object</summary><pre>${esc(JSON.stringify(rate, null, 2))}</pre></details></td>
-      </tr>`;
-    }).join('') : `<tr><td colspan="10" class="empty">No stored records found for ${esc(expected.grade)}.</td></tr>`;
-    return `<section class="siba-grade-diagnostic">
-      <h4>${esc(expected.grade)} — expected ${expected.factoryRate} / ${expected.commissionPerKg} / ${expected.partyRate}</h4>
-      <p>Unassigned records: ${legacyRecords.length} | Existing SIBA records: ${sibaRecords.length} | All matching records: ${gradeRecords.length}</p>
-      <div class="tableResponsive">
-        <table>
-          <thead><tr><th>Record ID</th><th>Grade (raw)</th><th>Factory ID (raw)</th><th>Factory Name</th><th>Factory Rate (raw)</th><th>Commission (raw)</th><th>Party Rate (raw)</th><th>Assignment</th><th>Exact expected match</th><th>Full rate object</th></tr></thead>
-          <tbody>${records}</tbody>
-        </table>
-      </div>
-    </section>`;
-  }).join('');
-
-  const checkRows = diagnostic.checks.map((check) => `
-    <tr>
-      <td>${check.passed ? 'PASS' : 'FAIL'}</td>
-      <td>${esc(check.label)}</td>
-      <td>${esc(check.detail)}</td>
-    </tr>`).join('');
-
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `
-    <section class="modal-box w160-diagnostic-modal" role="dialog" aria-modal="true" aria-labelledby="sibaDiagnosticTitle">
-      <h3 id="sibaDiagnosticTitle">Diagnose SIBA Mapping</h3>
-      <p class="w160-readonly-warning">READ ONLY — NO DATA WILL BE CHANGED</p>
-      <p class="hint">Source: direct Firestore server reads for the signed-in account. LocalStorage/cache data is not used.</p>
-      <p class="hint">The checks below show which preconditions prevented the previous mapping. This diagnostic contains no mapping or write action.</p>
-      <p><strong>Factory records found:</strong> ${diagnostic.factories.length}</p>
-      <p><strong>Factories matching SIBA (trimmed/case-insensitive):</strong> ${diagnostic.sibaFactories.length}</p>
-      <p><strong>Existing SIBA rate records for these 10 grades:</strong> ${diagnostic.sibaRateRecords.length}</p>
-      <div class="tableResponsive">
-        <table>
-          <thead><tr><th>#</th><th>Factory ID (raw)</th><th>Factory Name (raw)</th><th>Active (raw)</th></tr></thead>
-          <tbody>${factoryRows}</tbody>
-        </table>
-      </div>
-      <h4>Guard-condition checks</h4>
-      <div class="tableResponsive">
-        <table>
-          <thead><tr><th>Result</th><th>Condition</th><th>Details</th></tr></thead>
-          <tbody>${checkRows}</tbody>
-        </table>
-      </div>
-      <p class="w160-diagnostic-result"><strong>Final result: ${esc(diagnostic.finalResult)}</strong></p>
-      <h4>Expected grade records and all matching stored records</h4>
-      ${gradeRows}
-      ${diagnostic.unexpectedLegacyGrades.length ? `
-        <section class="siba-grade-diagnostic">
-          <h4>Other unassigned rate records counted by the legacy-rate total (${diagnostic.unexpectedLegacyGrades.length})</h4>
-          <div class="tableResponsive"><table>
-            <thead><tr><th>Record ID</th><th>Grade (raw)</th><th>Factory Rate (raw)</th><th>Commission (raw)</th><th>Party Rate (raw)</th><th>Full rate object</th></tr></thead>
-            <tbody>${diagnostic.unexpectedLegacyGrades.map((rate) => `<tr>
-              <td><code>${esc(diagnosticRaw(rate.id))}</code></td>
-              <td><code>${esc(diagnosticRaw(rate.grade))}</code></td>
-              <td><code>${esc(diagnosticRaw(rate.factoryRate))}</code></td>
-              <td><code>${esc(diagnosticRaw(rate.commissionPerKg))}</code></td>
-              <td><code>${esc(diagnosticRaw(rate.partyRate))}</code></td>
-              <td><details><summary>Raw object</summary><pre>${esc(JSON.stringify(rate, null, 2))}</pre></details></td>
-            </tr>`).join('')}</tbody>
-          </table></div>
-        </section>` : ''}
-      <div class="modal-actions">
-        <button type="button" class="btn btn-secondary" data-siba-close>Close</button>
-      </div>
-    </section>`;
-  overlay.querySelector('[data-siba-close]').addEventListener('click', () => overlay.remove());
-  overlay.addEventListener('click', (event) => {
-    if (event.target === overlay) overlay.remove();
-  });
-  document.body.appendChild(overlay);
-}
-
-async function showSibaMappingDiagnostic() {
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `
-    <section class="modal-box w160-diagnostic-modal" role="dialog" aria-modal="true" aria-labelledby="sibaDiagnosticLoadingTitle">
-      <h3 id="sibaDiagnosticLoadingTitle">Diagnose SIBA Mapping</h3>
-      <p class="w160-readonly-warning">READ ONLY — NO DATA WILL BE CHANGED</p>
-      <p data-diagnostic-status>Reading rates and factories directly from Firestore server…</p>
-      <div class="modal-actions"><button type="button" class="btn btn-secondary" data-siba-close>Cancel</button></div>
-    </section>`;
-  document.body.appendChild(overlay);
-  overlay.querySelector('[data-siba-close]').addEventListener('click', () => overlay.remove());
-  try {
-    const liveData = await readSibaMappingFromFirestore();
-    if (!overlay.isConnected) return;
-    overlay.remove();
-    renderSibaDiagnostic(diagnoseSibaMapping(liveData.rates, liveData.factories));
-  } catch (error) {
-    overlay.innerHTML = `
-      <section class="modal-box w160-diagnostic-modal" role="dialog" aria-modal="true" aria-labelledby="sibaDiagnosticErrorTitle">
-        <h3 id="sibaDiagnosticErrorTitle">SIBA Mapping Diagnostic Not Run</h3>
-        <p class="w160-readonly-warning">READ ONLY — NO DATA WILL BE CHANGED</p>
-        <p class="copy-lot-error">Could not read both Firestore documents directly from the server.</p>
-        <pre>${esc(error.message)}</pre>
-        <p>No cached fallback was used. No mapping condition was evaluated.</p>
-        <div class="modal-actions"><button type="button" class="btn btn-secondary" data-siba-close>Close</button></div>
-      </section>`;
-    overlay.querySelector('[data-siba-close]').addEventListener('click', () => overlay.remove());
-  }
-}
 
 function renderCopyLotModal() {
   const { factories, rates } = getState();
@@ -472,7 +198,7 @@ export function renderRateMaster(container) {
         <input type="file" accept=".csv" id="importRatesCsv" hidden />
       </label>
       <button type="button" class="btn btn-secondary" id="copyLotBtn">Copy Lot</button>
-      <button type="button" class="btn btn-secondary" id="diagnoseSibaBtn">Diagnose SIBA Mapping (Read Only)</button>
+      <button type="button" class="btn btn-secondary" id="assignSibaRatesBtn">Assign Existing Rates to SIBA</button>
     </section>
     <section class="tableBox">
       <h2>Rate Master</h2>
@@ -537,10 +263,14 @@ export function renderRateMaster(container) {
     renderRateMaster(container);
   });
   container.querySelector('#copyLotBtn').addEventListener('click', renderCopyLotModal);
-  container.querySelector('#diagnoseSibaBtn').addEventListener('click', () => {
-    showSibaMappingDiagnostic().catch((error) => {
-      console.error('SIBA mapping diagnostic failed:', error);
-      toast(`SIBA diagnostic failed: ${error.message}`, 'error');
+  container.querySelector('#assignSibaRatesBtn').addEventListener('click', () => {
+    confirmAction('Assign the existing 10 grade rates to SIBA? Only their factory assignment will change.', async () => {
+      try {
+        const assigned = await assignExistingRatesToSiba();
+        toast(assigned ? `Assigned ${assigned} existing rates to SIBA. Rate values and dates were preserved.` : 'All 10 rates are already assigned to SIBA.');
+      } catch (err) {
+        toast(err.message, 'error');
+      }
     });
   });
 
