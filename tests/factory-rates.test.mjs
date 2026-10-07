@@ -12,7 +12,7 @@ vm.runInContext(`${appSource}
 persist = () => {};
 globalThis.testApp = {
   state, calcDeal, saveDeal, saveRate, saveFactory, findOrCreateFactory,
-  getRateForFactory, copyRatesBetweenFactories, normalizeDeal
+  getRateForFactory, copyRatesBetweenFactories, assignLegacyRatesToSiba, normalizeDeal
 };`, context);
 const app = context.testApp;
 const factoryA = 'factory-a';
@@ -73,6 +73,42 @@ assert.equal(app.state.rates.find((rate) => rate.id === 'legacy-w240').factoryRa
 for (const [bucket, expectedKg] of [[5, 50], [10, 100], [28, 280], [40, 400]]) {
   assert.equal(context.calcDeal({ bucket, factoryRate: 805, commissionPerKg: 5 }).kg, expectedKg);
 }
+
+const sibaValues = [
+  ['1st SW', 695, 700],
+  ['2nd SW', 630, 635],
+  ['JH', 785, 790],
+  ['K', 715, 720],
+  ['Special JH', 755, 760],
+  ['W160', 850, 855],
+  ['W180', 855, 860],
+  ['W210', 825, 830],
+  ['W240', 805, 810],
+  ['W320', 785, 790]
+];
+app.state.factories = [{ id: 'siba-id', name: 'SIBA' }];
+app.state.rates = sibaValues.map(([grade, factoryRate, partyRate]) => ({
+  id: `legacy-${grade}`,
+  grade,
+  factoryRate,
+  commissionPerKg: 5,
+  partyRate,
+  updatedAt: '2026-08-10T00:00:00.000Z'
+}));
+const sibaRatesBefore = JSON.parse(JSON.stringify(app.state.rates));
+app.state.rates[9].partyRate++;
+const invalidSibaRates = JSON.stringify(app.state.rates);
+assert.throws(() => app.assignLegacyRatesToSiba(), /Cannot safely assign W320/);
+assert.equal(JSON.stringify(app.state.rates), invalidSibaRates);
+app.state.rates[9].partyRate = 790;
+assert.equal(app.assignLegacyRatesToSiba(), 10);
+app.state.rates.forEach((rate, index) => {
+  const { factoryId: _factoryId, ...beforeAssignment } = sibaRatesBefore[index];
+  const { factoryId, ...afterAssignment } = rate;
+  assert.equal(factoryId, 'siba-id');
+  assert.equal(JSON.stringify(afterAssignment), JSON.stringify(beforeAssignment));
+});
+assert.equal(app.assignLegacyRatesToSiba(), 0);
 
 const dealsSource = await readFile(new URL('../deals.js', import.meta.url), 'utf8');
 assert.ok(dealsSource.includes("container.querySelector('[name=factoryName]').addEventListener('change'"));
