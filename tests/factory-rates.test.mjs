@@ -9,16 +9,30 @@ appSource = appSource
   .replace(/\nbootstrap\(\);\s*$/, '');
 const firestoreRateWrites = [];
 const localStorageWrites = [];
+let liveFirestoreRates = [];
 const context = vm.createContext({
   console, Date, Math, Intl, URLSearchParams,
-  saveRatesDocumentToFirestore: async (rates) => firestoreRateWrites.push(JSON.parse(JSON.stringify(rates))),
+  readRatesDocumentFromFirestore: async () => ({
+    documentId: 'rates',
+    exists: true,
+    rates: liveFirestoreRates
+  }),
+  updateRatesDocumentInFirestore: async (updateRates) => {
+    const updatedRates = updateRates(liveFirestoreRates);
+    if (updatedRates !== liveFirestoreRates) {
+      liveFirestoreRates = updatedRates;
+      firestoreRateWrites.push(JSON.parse(JSON.stringify(updatedRates)));
+    }
+    return updatedRates;
+  },
   localStorage: { setItem: (key, value) => localStorageWrites.push([key, value]) }
 });
 vm.runInContext(`${appSource}
 persist = () => {};
 globalThis.testApp = {
   state, calcDeal, saveDeal, saveRate, saveFactory, findOrCreateFactory,
-  getRateForFactory, copyRatesBetweenFactories, assignExistingRatesToSiba, normalizeDeal
+  getRateForFactory, copyRatesBetweenFactories, assignExistingRatesToSiba,
+  getSibaRateAssignmentPreflight, normalizeDeal
 };`, context);
 const app = context.testApp;
 const factoryA = 'factory-a';
@@ -93,28 +107,40 @@ const sibaMappingValues = [
   ['W320', 785, 790]
 ];
 const dealsSource = await readFile(new URL('../deals.js', import.meta.url), 'utf8');
+const firebaseSource = await readFile(new URL('../firebase.js', import.meta.url), 'utf8');
 assert.ok(dealsSource.includes("container.querySelector('[name=factoryName]').addEventListener('change'"));
 assert.ok(dealsSource.includes('getRateForFactory(grade, factory?.id)'));
 assert.ok(dealsSource.includes('copyRatesBetweenFactories(sourceSelect.value, targetSelect.value'));
 assert.ok(dealsSource.includes('Assign Existing Rates to SIBA'));
+assert.ok(dealsSource.includes('getSibaRateAssignmentPreflight()'));
+assert.ok(dealsSource.includes('Firestore Doc ID'));
 assert.ok(!dealsSource.includes('diagnoseSibaMapping'));
 assert.ok(!dealsSource.includes('READ ONLY — NO DATA WILL BE CHANGED'));
 assert.ok(!appSource.includes('assignLegacyRatesToSiba'));
 assert.ok(!appSource.includes('SIBA_RATE_ASSIGNMENT_EXPECTED'));
+assert.ok(firebaseSource.includes("erpRef('rates').get({ source: 'server' })"));
+assert.ok(firebaseSource.includes('firestore.runTransaction'));
 
 app.state.factories = [{ id: 'siba-id', name: ' Siba ' }];
-app.state.rates = sibaMappingValues.map(([grade, factoryRate, partyRate], index) => ({
+liveFirestoreRates = sibaMappingValues.map(([grade, factoryRate, partyRate], index) => ({
   id: `legacy-${index}`,
-  grade: grade === 'Special JH' ? ' Special jh ' : grade,
+  grade: grade === 'Special JH' ? ' Special jh ' : grade === 'W160' ? ' W-160 ' : grade,
   factoryRate,
   commissionPerKg: 5,
   partyRate,
   updatedAt: `2026-08-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`
 }));
-app.state.rates.find((rate) => rate.grade === 'W160').factoryRate = 1234;
-const ratesBeforeAssignment = JSON.parse(JSON.stringify(app.state.rates));
+app.state.rates = JSON.parse(JSON.stringify(liveFirestoreRates));
+app.state.rates.find((rate) => rate.grade.includes('W-160')).factoryRate = 1;
+const ratesBeforeAssignment = JSON.parse(JSON.stringify(liveFirestoreRates));
 const dealsBeforeAssignment = JSON.stringify(app.state.deals);
-assert.equal(await app.assignExistingRatesToSiba(), 10);
+const sibaPreflight = await app.getSibaRateAssignmentPreflight();
+assert.equal(sibaPreflight.documentId, 'rates');
+assert.equal(sibaPreflight.totalRecords, 10);
+assert.equal(sibaPreflight.canAssign, true);
+assert.equal(sibaPreflight.rows.find((rate) => rate.rawGrade === ' W-160 ').normalizedGrade, 'w160');
+assert.equal(sibaPreflight.gradeResults.find((result) => result.grade === 'W160').matches[0].recordId, 'legacy-5');
+assert.equal(await app.assignExistingRatesToSiba(sibaPreflight.selectedRecordIds), 10);
 assert.equal(app.state.rates.length, 10);
 assert.equal(firestoreRateWrites.length, 1);
 assert.equal(firestoreRateWrites[0].length, 10);
@@ -128,40 +154,63 @@ assert.equal(localStorageWrites.length, 1);
 assert.equal(localStorageWrites[0][0], 'mct:rates');
 assert.ok(!appSource.includes('assignExistingRatesToSiba();'));
 assert.equal(JSON.stringify(app.state.deals), dealsBeforeAssignment);
-assert.equal(await app.assignExistingRatesToSiba(), 0);
+const alreadyAssignedPreflight = await app.getSibaRateAssignmentPreflight();
+assert.equal(alreadyAssignedPreflight.canAssign, true);
+assert.equal(await app.assignExistingRatesToSiba(alreadyAssignedPreflight.selectedRecordIds), 0);
 assert.equal(firestoreRateWrites.length, 1);
 
-app.state.rates.find((rate) => rate.grade === 'W160').factoryRate = 1;
-assert.equal(await app.assignExistingRatesToSiba(), 0);
+liveFirestoreRates = JSON.parse(JSON.stringify(ratesBeforeAssignment));
+const stalePreflight = await app.getSibaRateAssignmentPreflight();
+liveFirestoreRates.find((rate) => rate.grade.includes('W-160')).id = 'changed-w160-id';
+const beforeStaleAttempt = JSON.stringify(liveFirestoreRates);
+await assert.rejects(app.assignExistingRatesToSiba(stalePreflight.selectedRecordIds), /Live rate records changed since preflight.*No rates were changed/);
+assert.equal(JSON.stringify(liveFirestoreRates), beforeStaleAttempt);
 assert.equal(firestoreRateWrites.length, 1);
 
-app.state.rates = sibaMappingValues.map(([grade, factoryRate, partyRate], index) => ({
+liveFirestoreRates = JSON.parse(JSON.stringify(ratesBeforeAssignment));
+liveFirestoreRates.find((rate) => rate.grade.includes('W-160')).factoryRate = 1;
+const mismatchPreflight = await app.getSibaRateAssignmentPreflight();
+assert.equal(mismatchPreflight.canAssign, false);
+assert.match(mismatchPreflight.gradeResults.find((result) => result.grade === 'W160').issue, /no record matches/);
+await assert.rejects(app.assignExistingRatesToSiba(mismatchPreflight.selectedRecordIds), /No rates were changed/);
+assert.equal(firestoreRateWrites.length, 1);
+
+liveFirestoreRates = sibaMappingValues.map(([grade, factoryRate, partyRate], index) => ({
   id: `legacy-${index}`, grade, factoryRate, commissionPerKg: 5, partyRate
 }));
+app.state.rates = JSON.parse(JSON.stringify(liveFirestoreRates));
 app.state.factories.push({ id: 'siba-duplicate', name: 'siba' });
-const stateBeforeDuplicateFactory = JSON.stringify(app.state.rates);
-await assert.rejects(app.assignExistingRatesToSiba(), /exactly one factory named SIBA/);
-assert.equal(JSON.stringify(app.state.rates), stateBeforeDuplicateFactory);
+const stateBeforeDuplicateFactory = JSON.stringify(liveFirestoreRates);
+const duplicateFactoryPreflight = await app.getSibaRateAssignmentPreflight();
+assert.equal(duplicateFactoryPreflight.canAssign, false);
+await assert.rejects(app.assignExistingRatesToSiba(duplicateFactoryPreflight.selectedRecordIds), /exactly one factory named SIBA/);
+assert.equal(JSON.stringify(liveFirestoreRates), stateBeforeDuplicateFactory);
 assert.equal(firestoreRateWrites.length, 1);
 
 app.state.factories = [{ id: 'siba-id', name: 'SIBA' }];
-app.state.rates = sibaMappingValues.slice(1).map(([grade, factoryRate, partyRate], index) => ({
+liveFirestoreRates = sibaMappingValues.slice(1).map(([grade, factoryRate, partyRate], index) => ({
   id: `legacy-${index}`, grade, factoryRate, commissionPerKg: 5, partyRate
 }));
-const stateBeforeMissingGrade = JSON.stringify(app.state.rates);
-await assert.rejects(app.assignExistingRatesToSiba(), /exactly one existing 1st SW/);
-assert.equal(JSON.stringify(app.state.rates), stateBeforeMissingGrade);
+app.state.rates = JSON.parse(JSON.stringify(liveFirestoreRates));
+const stateBeforeMissingGrade = JSON.stringify(liveFirestoreRates);
+const missingGradePreflight = await app.getSibaRateAssignmentPreflight();
+assert.equal(missingGradePreflight.canAssign, false);
+await assert.rejects(app.assignExistingRatesToSiba(missingGradePreflight.selectedRecordIds), /1st SW: no live Firestore rate record/);
+assert.equal(JSON.stringify(liveFirestoreRates), stateBeforeMissingGrade);
 assert.equal(firestoreRateWrites.length, 1);
 
-app.state.rates = sibaMappingValues.map(([grade, factoryRate, partyRate], index) => ({
+liveFirestoreRates = sibaMappingValues.map(([grade, factoryRate, partyRate], index) => ({
   id: `legacy-${index}`, grade, factoryRate, commissionPerKg: 5, partyRate
 }));
-const specialJHRate = app.state.rates.find((rate) => rate.grade === 'Special JH');
-specialJHRate.grade = 'Special jh';
-app.state.rates.push({ ...specialJHRate, id: 'duplicate-special-jh' });
-const stateBeforeDuplicateGrade = JSON.stringify(app.state.rates);
-await assert.rejects(app.assignExistingRatesToSiba(), /exactly one existing Special JH rate record/);
-assert.equal(JSON.stringify(app.state.rates), stateBeforeDuplicateGrade);
+const w160Rate = liveFirestoreRates.find((rate) => rate.grade === 'W160');
+liveFirestoreRates.push({ ...w160Rate, id: 'duplicate-w160', grade: 'W-160' });
+app.state.rates = JSON.parse(JSON.stringify(liveFirestoreRates));
+const stateBeforeDuplicateGrade = JSON.stringify(liveFirestoreRates);
+const duplicateGradePreflight = await app.getSibaRateAssignmentPreflight();
+assert.equal(duplicateGradePreflight.canAssign, false);
+assert.match(duplicateGradePreflight.gradeResults.find((result) => result.grade === 'W160').issue, /2 live Firestore records/);
+await assert.rejects(app.assignExistingRatesToSiba(duplicateGradePreflight.selectedRecordIds), /W160: 2 live Firestore records/);
+assert.equal(JSON.stringify(liveFirestoreRates), stateBeforeDuplicateGrade);
 assert.equal(firestoreRateWrites.length, 1);
 
 console.log('Factory-wise rate, explicit SIBA assignment, deal snapshot, and bucket/KG regression checks passed.');

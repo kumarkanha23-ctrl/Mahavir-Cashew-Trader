@@ -14,7 +14,8 @@ import {
   startFirestoreSync,
   stopFirestoreSync,
   syncToCloud,
-  saveRatesDocumentToFirestore,
+  readRatesDocumentFromFirestore,
+  updateRatesDocumentInFirestore,
   isOnline,
   DEFAULT_FIREBASE_CONFIG,
   registerCloudImportHandler
@@ -1201,43 +1202,146 @@ const SIBA_RATE_GRADES = [
   'W160', 'W180', 'W210', 'W240', 'W320'
 ];
 
-export async function assignExistingRatesToSiba() {
+const SIBA_EXPECTED_RATES = {
+  '1st SW': [695, 5, 700],
+  '2nd SW': [630, 5, 635],
+  JH: [785, 5, 790],
+  K: [715, 5, 720],
+  'Special JH': [755, 5, 760],
+  W160: [850, 5, 855],
+  W180: [855, 5, 860],
+  W210: [825, 5, 830],
+  W240: [805, 5, 810],
+  W320: [785, 5, 790]
+};
+
+function normalizeRateGrade(grade) {
+  return typeof grade === 'string'
+    ? grade.normalize('NFKC').trim().toLowerCase().replace(/[\s-]+/g, '')
+    : '';
+}
+
+function rateValueMatches(actual, expected) {
+  if (typeof actual !== 'number' && typeof actual !== 'string') return false;
+  if (typeof actual === 'string' && !actual.trim()) return false;
+  const value = Number(actual);
+  return Number.isFinite(value) && value === expected;
+}
+
+function createSibaRateAssignmentPreflight(rates, documentId) {
   if (!isAdminUser()) throw new Error('Only admins can assign rates to a factory.');
   const sibaFactories = state.factories.filter((factory) =>
     typeof factory?.name === 'string' && factory.name.trim().toLowerCase() === 'siba'
   );
-  if (sibaFactories.length !== 1) {
-    throw new Error(`Expected exactly one factory named SIBA; found ${sibaFactories.length}.`);
-  }
-
-  const sibaFactoryId = sibaFactories[0].id;
-  if (!sibaFactoryId) throw new Error('The SIBA factory has no ID.');
-  const targetRates = [];
-  SIBA_RATE_GRADES.forEach((grade) => {
-    const normalizedGrade = grade.trim().toLowerCase();
-    const matches = state.rates.filter((rate) =>
-      typeof rate?.grade === 'string' && rate.grade.trim().toLowerCase() === normalizedGrade
-    );
-    if (matches.length !== 1) {
-      throw new Error(`Expected exactly one existing ${grade} rate record; found ${matches.length}. No rates were changed.`);
-    }
-    const [rate] = matches;
-    if (rate.factoryId && rate.factoryId !== sibaFactoryId) {
-      throw new Error(`${grade} is already assigned to another factory. No rates were changed.`);
-    }
-    targetRates.push(rate);
+  const factoryById = new Map(state.factories.map((factory) => [factory.id, factory]));
+  const expectedByNormalizedGrade = new Map(SIBA_RATE_GRADES.map((grade) => [normalizeRateGrade(grade), grade]));
+  const rows = rates.map((rate) => {
+    const normalizedGrade = normalizeRateGrade(rate?.grade);
+    const expectedGrade = expectedByNormalizedGrade.get(normalizedGrade) || '';
+    const [factoryRate, commission, partyRate] = expectedGrade ? SIBA_EXPECTED_RATES[expectedGrade] : [];
+    const matchesExpectedValues = !!expectedGrade &&
+      rateValueMatches(rate.factoryRate, factoryRate) &&
+      rateValueMatches(rate.commissionPerKg, commission) &&
+      rateValueMatches(rate.partyRate, partyRate);
+    return {
+      firestoreDocumentId: documentId,
+      recordId: rate?.id,
+      rawGrade: rate?.grade,
+      normalizedGrade,
+      factoryId: rate?.factoryId,
+      factoryName: factoryById.get(rate?.factoryId)?.name || '',
+      factoryRate: rate?.factoryRate,
+      commission: rate?.commissionPerKg,
+      partyRate: rate?.partyRate,
+      expectedGrade,
+      matchesExpectedValues
+    };
   });
+  const gradeResults = SIBA_RATE_GRADES.map((grade) => {
+    const normalizedGrade = normalizeRateGrade(grade);
+    const gradeRows = rows.filter((row) => row.normalizedGrade === normalizedGrade);
+    const matches = gradeRows.filter((row) => row.matchesExpectedValues);
+    let issue = '';
+    if (matches.length === 0) {
+      issue = gradeRows.length
+        ? `${grade}: grade found, but no record matches the expected factory rate, commission, and party rate.`
+        : `${grade}: no live Firestore rate record has this normalized grade.`;
+    } else if (matches.length > 1) {
+      issue = `${grade}: ${matches.length} live Firestore records match the grade and expected values; selection is ambiguous.`;
+    } else if (typeof matches[0].recordId !== 'string' || !matches[0].recordId) {
+      issue = `${grade}: the matching live rate record has no embedded record ID.`;
+    } else if (rows.filter((row) => row.recordId === matches[0].recordId).length !== 1) {
+      issue = `${grade}: the matching embedded record ID is not unique.`;
+    } else if (matches[0].factoryId && matches[0].factoryId !== sibaFactories[0]?.id) {
+      issue = `${grade}: the matching record is already assigned to another factory (${matches[0].factoryName || matches[0].factoryId}).`;
+    }
+    return {
+      grade,
+      normalizedGrade,
+      expected: SIBA_EXPECTED_RATES[grade],
+      gradeRows,
+      matches,
+      issue
+    };
+  });
+  const issues = [];
+  if (sibaFactories.length !== 1) {
+    issues.push(`Expected exactly one factory named SIBA; found ${sibaFactories.length}.`);
+  } else if (!sibaFactories[0].id) {
+    issues.push('The SIBA factory has no ID.');
+  }
+  gradeResults.forEach((result) => {
+    if (result.issue) issues.push(result.issue);
+  });
+  const selectedRecordIds = Object.fromEntries(gradeResults
+    .filter((result) => result.matches.length === 1)
+    .map((result) => [result.grade, result.matches[0].recordId]));
+  return {
+    documentId,
+    totalRecords: rows.length,
+    rows,
+    gradeResults,
+    issues,
+    canAssign: issues.length === 0,
+    selectedRecordIds,
+    sibaFactoryId: sibaFactories.length === 1 ? sibaFactories[0].id : '',
+    sibaFactoryName: sibaFactories.length === 1 ? sibaFactories[0].name : ''
+  };
+}
 
-  const targetRateSet = new Set(targetRates);
-  const updatedRates = state.rates.map((rate) =>
-    targetRateSet.has(rate) && rate.factoryId !== sibaFactoryId
-      ? { ...rate, factoryId: sibaFactoryId }
-      : rate
-  );
-  const assignedCount = targetRates.filter((rate) => rate.factoryId !== sibaFactoryId).length;
+export async function getSibaRateAssignmentPreflight() {
+  if (!isAdminUser()) throw new Error('Only admins can inspect or assign rates to a factory.');
+  const { documentId, rates } = await readRatesDocumentFromFirestore();
+  return createSibaRateAssignmentPreflight(rates, documentId);
+}
+
+export async function assignExistingRatesToSiba(expectedRecordIds) {
+  if (!isAdminUser()) throw new Error('Only admins can assign rates to a factory.');
+  if (!expectedRecordIds || typeof expectedRecordIds !== 'object') {
+    throw new Error('Run and review the live Firestore preflight before assigning rates.');
+  }
+  let assignedCount = 0;
+  const updatedRates = await updateRatesDocumentInFirestore((currentRates) => {
+    assignedCount = 0;
+    const preflight = createSibaRateAssignmentPreflight(currentRates, 'rates');
+    if (!preflight.canAssign) {
+      throw new Error(`${preflight.issues.join(' ')} No rates were changed.`);
+    }
+    const changedSincePreflight = SIBA_RATE_GRADES.filter((grade) =>
+      expectedRecordIds[grade] !== preflight.selectedRecordIds[grade]
+    );
+    if (changedSincePreflight.length) {
+      throw new Error(`Live rate records changed since preflight for: ${changedSincePreflight.join(', ')}. No rates were changed. Run the preflight again.`);
+    }
+    const targetIds = new Set(Object.values(preflight.selectedRecordIds));
+    const updated = currentRates.map((rate) => {
+      if (!targetIds.has(rate.id) || rate.factoryId === preflight.sibaFactoryId) return rate;
+      assignedCount += 1;
+      return { ...rate, factoryId: preflight.sibaFactoryId };
+    });
+    return assignedCount ? updated : currentRates;
+  });
   if (!assignedCount) return 0;
-
-  await saveRatesDocumentToFirestore(updatedRates);
   state.rates = updatedRates;
   lsSet(KEYS.RATES, updatedRates);
   notify();

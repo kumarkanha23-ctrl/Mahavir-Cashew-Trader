@@ -3454,6 +3454,27 @@ input::placeholder {
   font-weight: 600;
 }
 
+.siba-preflight-modal {
+  max-width: 1200px;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.siba-preflight-table {
+  max-height: 36vh;
+  overflow: auto;
+  margin-top: 12px;
+}
+
+.siba-preflight-table table {
+  min-width: 900px;
+}
+
+.siba-preflight-ready {
+  color: var(--success) !important;
+  font-weight: 600;
+}
+
 @media (max-width: 600px) {
   .copy-lot-factories {
     grid-template-columns: 1fr;
@@ -3461,6 +3482,10 @@ input::placeholder {
 
   .copy-lot-modes .btn {
     flex: 1 1 100%;
+  }
+
+  .siba-preflight-modal {
+    padding: 16px;
   }
 
 }

@@ -331,13 +331,45 @@ export async function saveAllToFirestore(data) {
   }
 }
 
-export async function saveRatesDocumentToFirestore(rates) {
+export async function readRatesDocumentFromFirestore() {
   if (!isFirestoreReady() || !isUserSignedIn()) {
     throw new Error('Firestore is not ready or no authenticated user is available.');
   }
+  const snapshot = await erpRef('rates').get({ source: 'server' });
+  const data = snapshot.exists ? snapshot.data() : null;
+  const rates = data ? unwrapPayload(data) : [];
+  if (!Array.isArray(rates)) {
+    throw new Error('The live Firestore rates document does not contain a rates array.');
+  }
+  return { documentId: snapshot.id, exists: snapshot.exists, rates };
+}
+
+export async function updateRatesDocumentInFirestore(updateRates) {
+  if (!isFirestoreReady() || !isUserSignedIn()) {
+    throw new Error('Firestore is not ready or no authenticated user is available.');
+  }
+  if (typeof updateRates !== 'function') throw new Error('A rates update function is required.');
   isSaving = true;
   try {
-    await erpRef('rates').set(wrapPayload(rates));
+    return await firestore.runTransaction(async (transaction) => {
+      const ref = erpRef('rates');
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) throw new Error('The live Firestore rates document no longer exists.');
+      const currentRates = unwrapPayload(snapshot.data());
+      if (!Array.isArray(currentRates)) {
+        throw new Error('The live Firestore rates document does not contain a rates array.');
+      }
+      const updatedRates = updateRates(currentRates);
+      if (!Array.isArray(updatedRates)) throw new Error('The rates update did not return a rates array.');
+      if (updatedRates === currentRates) return currentRates;
+      transaction.update(ref, {
+        payload: updatedRates,
+        updatedAt: new Date().toISOString(),
+        deviceId: getDeviceId(),
+        v: 2
+      });
+      return updatedRates;
+    });
   } finally {
     setTimeout(() => { isSaving = false; }, 300);
   }

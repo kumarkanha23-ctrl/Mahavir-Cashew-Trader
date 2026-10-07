@@ -3,7 +3,7 @@ import {
   fmtDate, fmtMoney, fmtNum, round, num, esc, toast, confirmAction, navigate, uid,
   ROUTES, today, DEFAULT_COMMISSION, filterDeals,
   findOrCreateFactory, copyRatesBetweenFactories, getRateForFactory,
-  assignExistingRatesToSiba,
+  getSibaRateAssignmentPreflight, assignExistingRatesToSiba,
   normalizeDeal, getDealGrades, dashboardMetrics, buildRecentDealsWhatsAppMessage,
   openWhatsApp, openWhatsAppForDeal
 } from './app.js';
@@ -163,6 +163,115 @@ function renderCopyLotModal() {
   renderPreview();
 }
 
+function rawDiagnosticValue(value) {
+  if (value === undefined) return 'undefined';
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'number' && !Number.isFinite(value)) return String(value);
+  const serialized = JSON.stringify(value);
+  return serialized === undefined ? String(value) : serialized;
+}
+
+async function renderSibaRateAssignmentModal(container) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box modal-box-lg siba-preflight-modal" role="dialog" aria-modal="true" aria-labelledby="sibaPreflightTitle">
+      <h3 id="sibaPreflightTitle">SIBA Rate Assignment Preflight</h3>
+      <p class="hint">Reading the live Firestore rates document. No data is changed during preflight.</p>
+      <p class="copy-lot-error" data-siba-error></p>
+      <div data-siba-report></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" data-siba-cancel>Close</button>
+        <button type="button" class="btn btn-primary" data-siba-assign disabled>Assign Rates to SIBA</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const reportContainer = overlay.querySelector('[data-siba-report]');
+  const error = overlay.querySelector('[data-siba-error]');
+  const assignButton = overlay.querySelector('[data-siba-assign]');
+  const cancelButton = overlay.querySelector('[data-siba-cancel]');
+  cancelButton.addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) overlay.remove();
+  });
+
+  const renderReport = (report) => {
+    const matchingRows = new Set(report.gradeResults.flatMap((result) => result.matches));
+    const details = report.gradeResults.map((result) => `
+      <tr>
+        <td>${esc(result.grade)}</td>
+        <td>${result.expected.map((value) => fmtMoney(value)).join(' / ')}</td>
+        <td>${result.matches.length}</td>
+        <td>${esc(result.issue || (result.matches[0]?.recordId || 'Ready'))}</td>
+      </tr>`).join('');
+    const rows = report.rows.map((row) => `
+      <tr>
+        <td>${esc(rawDiagnosticValue(row.firestoreDocumentId))}</td>
+        <td>${esc(rawDiagnosticValue(row.recordId))}</td>
+        <td>${esc(rawDiagnosticValue(row.rawGrade))}</td>
+        <td>${esc(row.normalizedGrade || '—')}</td>
+        <td>${esc(rawDiagnosticValue(row.factoryId))}</td>
+        <td>${esc(row.factoryName || '—')}</td>
+        <td>${esc(rawDiagnosticValue(row.factoryRate))}</td>
+        <td>${esc(rawDiagnosticValue(row.commission))}</td>
+        <td>${esc(rawDiagnosticValue(row.partyRate))}</td>
+        <td>${matchingRows.has(row) ? 'Exact match' : row.expectedGrade ? 'Expected value mismatch' : 'Other rate'}</td>
+      </tr>`).join('');
+    const status = report.canAssign
+      ? `All 10 expected rates are uniquely identified in Firestore document "${report.documentId}".`
+      : report.issues.join(' ');
+    reportContainer.innerHTML = `
+      <p><strong>Live Firestore document:</strong> ${esc(report.documentId)} | <strong>Existing rate records:</strong> ${report.totalRecords}</p>
+      <p class="${report.canAssign ? 'siba-preflight-ready' : 'copy-lot-error'}">${esc(status)}</p>
+      <div class="tableResponsive siba-preflight-table">
+        <table>
+          <thead><tr><th>Expected Grade</th><th>Factory / Commission / Party</th><th>Exact Matches</th><th>Result / Record ID</th></tr></thead>
+          <tbody>${details}</tbody>
+        </table>
+      </div>
+      <div class="tableResponsive siba-preflight-table">
+        <table>
+          <thead><tr><th>Firestore Doc ID</th><th>Rate Record ID</th><th>Raw Grade</th><th>Normalized Grade</th><th>Factory ID</th><th>Factory Name</th><th>Factory Rate</th><th>Commission</th><th>Party Rate</th><th>Match</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="10" class="empty">No live rate records found.</td></tr>'}</tbody>
+        </table>
+      </div>`;
+    const needsAssignment = report.canAssign && report.gradeResults.some((result) =>
+      result.matches[0].factoryId !== report.sibaFactoryId
+    );
+    assignButton.disabled = !needsAssignment;
+    assignButton.textContent = report.canAssign && !needsAssignment ? 'Already Assigned' : 'Confirm and Assign';
+    assignButton.onclick = async () => {
+      assignButton.disabled = true;
+      assignButton.textContent = 'Revalidating…';
+      error.textContent = '';
+      try {
+        const assigned = await assignExistingRatesToSiba(report.selectedRecordIds);
+        overlay.remove();
+        toast(assigned ? `Assigned ${assigned} existing rates to SIBA. Rate values and dates were preserved.` : 'All 10 rates are already assigned to SIBA.');
+        renderRateMaster(container);
+      } catch (err) {
+        error.textContent = err.message;
+        try {
+          const latest = await getSibaRateAssignmentPreflight();
+          if (overlay.isConnected) renderReport(latest);
+        } catch (refreshError) {
+          error.textContent = `${err.message} Unable to refresh live preflight: ${refreshError.message}`;
+          assignButton.disabled = false;
+          assignButton.textContent = 'Confirm and Assign';
+        }
+      }
+    };
+  };
+
+  try {
+    const report = await getSibaRateAssignmentPreflight();
+    if (!overlay.isConnected) return;
+    renderReport(report);
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
 export function renderRateMaster(container) {
   const { rates, factories } = getState();
   const filteredRates = [...rates]
@@ -264,14 +373,7 @@ export function renderRateMaster(container) {
   });
   container.querySelector('#copyLotBtn').addEventListener('click', renderCopyLotModal);
   container.querySelector('#assignSibaRatesBtn').addEventListener('click', () => {
-    confirmAction('Assign the existing 10 grade rates to SIBA? Only their factory assignment will change.', async () => {
-      try {
-        const assigned = await assignExistingRatesToSiba();
-        toast(assigned ? `Assigned ${assigned} existing rates to SIBA. Rate values and dates were preserved.` : 'All 10 rates are already assigned to SIBA.');
-      } catch (err) {
-        toast(err.message, 'error');
-      }
-    });
+    renderSibaRateAssignmentModal(container);
   });
 
   container.querySelectorAll('[data-rate-id]').forEach((btn) => {
