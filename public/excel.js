@@ -189,6 +189,7 @@ export function importRatesFromCsv(file) {
               const commissionPerKg = parseFloat(row['Commission/KG']) || 0;
               
               ratesData.push({
+                factoryName: (row['Factory'] || row['Factory Name'] || '').trim(),
                 grade: row['Grade'],
                 factoryRate,
                 commissionPerKg

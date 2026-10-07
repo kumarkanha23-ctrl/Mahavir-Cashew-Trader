@@ -1024,10 +1024,31 @@ export function findOrCreateFactory(name) {
   if (!n) throw new Error('Factory name is required.');
   let f = state.factories.find((x) => x.name.toLowerCase() === n.toLowerCase());
   if (!f) {
-    f = { id: uid('factory'), name: n, phone: '', address: '', createdAt: new Date().toISOString() };
+    f = { id: uid('factory'), name: n, phone: '', whatsappNumber: '', address: '', notes: '', active: true, createdAt: new Date().toISOString() };
     state.factories.push(f);
   }
   return f;
+}
+
+export function saveFactory(input) {
+  const name = (input.name || '').trim();
+  if (!name) throw new Error('Factory name is required.');
+  if (state.factories.some((factory) => factory.name.toLowerCase() === name.toLowerCase())) {
+    throw new Error('A factory with this name already exists.');
+  }
+  const factory = {
+    id: uid('factory'),
+    name,
+    phone: (input.phone || '').trim(),
+    whatsappNumber: (input.whatsappNumber || '').trim(),
+    address: (input.address || '').trim(),
+    notes: (input.notes || '').trim(),
+    active: input.active !== false,
+    createdAt: new Date().toISOString()
+  };
+  state.factories.push(factory);
+  persist();
+  return factory;
 }
 
 function buildGradeLines(rawGrades) {
@@ -1109,19 +1130,111 @@ export function deleteDeal(id) {
   persist();
 }
 
-export function saveRate(input) {
-  const grade = (input.grade || '').trim();
-  if (!grade) throw new Error('Grade is required.');
-  const c = calcDeal({ bucket: 1, factoryRate: input.factoryRate, commissionPerKg: input.commissionPerKg });
-  const ex = state.rates.find((r) => r.grade.toLowerCase() === grade.toLowerCase());
-  const rate = {
-    id: ex?.id || uid('rate'), grade,
-    factoryRate: c.factoryRate, commissionPerKg: c.commissionPerKg, partyRate: c.partyRate,
-    updatedAt: new Date().toISOString()
-  };
-  if (ex) state.rates = state.rates.map((r) => (r.id === ex.id ? rate : r));
-  else state.rates.push(rate);
+export function saveRates(inputs) {
+  if (!Array.isArray(inputs)) throw new Error('Rates must be provided as an array.');
+  if (!inputs.length) return [];
+  const nextRates = [...state.rates];
+  const savedRates = [];
+
+  inputs.forEach((input) => {
+    if (!input || typeof input !== 'object') throw new Error('Invalid rate data.');
+    const grade = (input.grade || '').trim();
+    if (!grade) throw new Error('Grade is required.');
+    const factoryId = input.factoryId || undefined;
+    if (factoryId && !state.factories.some((factory) => factory.id === factoryId)) {
+      throw new Error('Select a valid factory.');
+    }
+    const byId = input.id ? nextRates.find((rate) => rate.id === input.id) : null;
+    const existingForFactory = nextRates.find((rate) =>
+      rate.factoryId === factoryId &&
+      rate.grade.toLowerCase() === grade.toLowerCase()
+    );
+    if (byId && existingForFactory && existingForFactory.id !== byId.id) {
+      throw new Error(`A rate for ${grade} already exists for this factory.`);
+    }
+
+    const existing = byId || existingForFactory;
+    const c = calcDeal({ bucket: 1, factoryRate: input.factoryRate, commissionPerKg: input.commissionPerKg });
+    const rate = {
+      ...(existing || {}),
+      id: existing?.id || uid('rate'),
+      grade,
+      factoryRate: c.factoryRate,
+      commissionPerKg: c.commissionPerKg,
+      partyRate: c.partyRate,
+      updatedAt: new Date().toISOString()
+    };
+    if (factoryId) rate.factoryId = factoryId;
+    else delete rate.factoryId;
+
+    if (existing) {
+      nextRates[nextRates.findIndex((item) => item.id === existing.id)] = rate;
+    } else {
+      nextRates.push(rate);
+    }
+    savedRates.push(rate);
+  });
+
+  state.rates = nextRates;
   persist();
+  return savedRates;
+}
+
+export function saveRate(input) {
+  return saveRates([input])[0];
+}
+
+export function getRateForFactory(grade, factoryId) {
+  const normalizedGrade = String(grade || '').trim().toLowerCase();
+  if (!normalizedGrade) return null;
+  const scopedRate = factoryId && state.rates.find((rate) =>
+    rate.factoryId === factoryId && rate.grade.toLowerCase() === normalizedGrade
+  );
+  return scopedRate || state.rates.find((rate) =>
+    !rate.factoryId && rate.grade.toLowerCase() === normalizedGrade
+  ) || null;
+}
+
+export function copyRatesBetweenFactories(sourceFactoryId, targetFactoryId, replaceGrades = []) {
+  if (!Array.isArray(replaceGrades)) throw new Error('Replacement grades must be provided as an array.');
+  if (!sourceFactoryId || !targetFactoryId || sourceFactoryId === targetFactoryId) {
+    throw new Error('Choose two different factories.');
+  }
+  if (!state.factories.some((factory) => factory.id === sourceFactoryId) ||
+      !state.factories.some((factory) => factory.id === targetFactoryId)) {
+    throw new Error('Select valid source and target factories.');
+  }
+
+  const sourceRates = state.rates.filter((rate) => rate.factoryId === sourceFactoryId);
+  if (!sourceRates.length) throw new Error('The source factory has no factory-specific rates to copy.');
+
+  const replaceSet = new Set(replaceGrades.map((grade) => String(grade).trim().toLowerCase()));
+  const targetRates = state.rates.filter((rate) => rate.factoryId === targetFactoryId);
+  const replacements = [];
+  const additions = [];
+  let skipped = 0;
+
+  sourceRates.forEach((source) => {
+    const target = targetRates.find((rate) => rate.grade.toLowerCase() === source.grade.toLowerCase());
+    if (target && !replaceSet.has(source.grade.toLowerCase())) {
+      skipped++;
+      return;
+    }
+    const copy = {
+      grade: source.grade,
+      factoryId: targetFactoryId,
+      factoryRate: source.factoryRate,
+      commissionPerKg: source.commissionPerKg
+    };
+    if (target) {
+      replacements.push({ ...copy, id: target.id });
+    } else {
+      additions.push(copy);
+    }
+  });
+
+  saveRates([...additions, ...replacements]);
+  return { added: additions.length, skipped, replaced: replacements.length };
 }
 
 export function deleteRate(id) {
@@ -1383,7 +1496,13 @@ export function updateParty(id, data) {
 }
 
 export function updateFactory(id, data) {
-  state.factories = state.factories.map((f) => f.id === id ? { ...f, ...data, name: (data.name || f.name).trim() } : f);
+  const current = state.factories.find((factory) => factory.id === id);
+  if (!current) throw new Error('Factory not found.');
+  const name = (data.name || current.name).trim();
+  if (state.factories.some((factory) => factory.id !== id && factory.name.toLowerCase() === name.toLowerCase())) {
+    throw new Error('A factory with this name already exists.');
+  }
+  state.factories = state.factories.map((f) => f.id === id ? { ...f, ...data, name } : f);
   state.deals = state.deals.map((d) => d.factoryId === id && data.name ? { ...d, factoryName: data.name.trim() } : d);
   persist();
 }
@@ -1398,6 +1517,8 @@ export function deleteParty(id) {
 export function deleteFactory(id) {
   if (state.deals.some((d) => d.factoryId === id) || state.payments.some((p) => p.factoryId === id))
     throw new Error('Factory has deals or payments.');
+  if (state.rates.some((rate) => rate.factoryId === id))
+    throw new Error('Factory has rates.');
   state.factories = state.factories.filter((f) => f.id !== id);
   persist();
 }

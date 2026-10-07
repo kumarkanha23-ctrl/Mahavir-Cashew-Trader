@@ -3389,6 +3389,81 @@ input::placeholder {
   }
 }
 
+.rate-factory-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  max-width: 360px;
+}
+
+.copy-lot-modal {
+  max-width: 850px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.copy-lot-factories {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 10px;
+}
+
+.copy-lot-factories label {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.copy-lot-intro {
+  color: var(--muted) !important;
+}
+
+.copy-lot-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.copy-lot-table {
+  max-height: 42vh;
+  overflow: auto;
+}
+
+.copy-lot-grade-action {
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+
+.copy-lot-new {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.copy-lot-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 12px 0 4px;
+}
+
+.copy-lot-error {
+  color: var(--danger) !important;
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .copy-lot-factories {
+    grid-template-columns: 1fr;
+  }
+
+  .copy-lot-modes .btn {
+    flex: 1 1 100%;
+  }
+}
+
 @media print {
   .sidebar, .header, .app-footer, .action-bar, .filter-bar, .btn { 
     display: none !important; 

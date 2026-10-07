@@ -1,24 +1,194 @@
 import {
-  getState, calcDeal, calcDealTotals, saveDeal, deleteDeal, saveRate, deleteRate,
+  getState, calcDeal, calcDealTotals, saveDeal, deleteDeal, saveRate, saveRates, deleteRate,
   fmtDate, fmtMoney, fmtNum, round, num, esc, toast, confirmAction, navigate, uid,
   ROUTES, today, DEFAULT_COMMISSION, filterDeals,
+  findOrCreateFactory, copyRatesBetweenFactories, getRateForFactory,
   normalizeDeal, getDealGrades, dashboardMetrics, buildRecentDealsWhatsAppMessage,
   openWhatsApp, openWhatsAppForDeal
 } from './app.js';
 import { exportDealsExcel, importRatesFromCsv } from './excel.js';
 
+const LEGACY_RATE_FACTORY = '__legacy_rates__';
+let activeRateFilter = 'all';
+
+function renderCopyLotModal() {
+  const { factories, rates } = getState();
+  const sourceFactories = factories.filter((factory) => rates.some((rate) => rate.factoryId === factory.id));
+  if (factories.length < 2) {
+    toast('Add at least two factories before copying rates.', 'error');
+    return;
+  }
+  if (!sourceFactories.length) {
+    toast('Add factory-specific rates before copying a lot.', 'error');
+    return;
+  }
+
+  const sourceFactoryId = sourceFactories[0].id;
+  const targetFactoryId = factories.find((factory) => factory.id !== sourceFactoryId)?.id || '';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box copy-lot-modal" role="dialog" aria-modal="true" aria-labelledby="copyLotTitle">
+      <h3 id="copyLotTitle">Copy Lot</h3>
+      <div class="copy-lot-factories">
+        <label>Copy From
+          <select id="copyLotSource">${sourceFactories.map((factory) => `<option value="${esc(factory.id)}">${esc(factory.name)}</option>`).join('')}</select>
+        </label>
+        <label>Copy To
+          <select id="copyLotTarget">${factories.map((factory) => `<option value="${esc(factory.id)}" ${factory.id === targetFactoryId ? 'selected' : ''}>${esc(factory.name)}</option>`).join('')}</select>
+        </label>
+      </div>
+      <p class="copy-lot-intro">Choose how existing destination grades should be handled. New grades are always added.</p>
+      <div class="copy-lot-modes" role="group" aria-label="Existing rate handling">
+        <button type="button" class="btn btn-primary" data-copy-mode="missing">Add Missing Only</button>
+        <button type="button" class="btn btn-secondary" data-copy-mode="keep">Keep Existing</button>
+        <button type="button" class="btn btn-secondary" data-copy-mode="replace">Replace Existing</button>
+      </div>
+      <div class="copy-lot-table tableResponsive">
+        <table>
+          <thead><tr><th>Grade</th><th>Source Rate</th><th>Target Rate</th><th>Action</th></tr></thead>
+          <tbody id="copyLotRows"></tbody>
+        </table>
+      </div>
+      <div class="copy-lot-summary" id="copyLotSummary"></div>
+      <p class="copy-lot-error" id="copyLotError"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" data-copy-cancel>Cancel</button>
+        <button type="button" class="btn btn-primary" data-copy-confirm>Copy Rates</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const sourceSelect = overlay.querySelector('#copyLotSource');
+  const targetSelect = overlay.querySelector('#copyLotTarget');
+  const rows = overlay.querySelector('#copyLotRows');
+  const summary = overlay.querySelector('#copyLotSummary');
+  const error = overlay.querySelector('#copyLotError');
+  const replaceGrades = new Set();
+  let copyMode = 'missing';
+  let sourceRates = [];
+  let conflicts = [];
+
+  const renderPreview = () => {
+    const state = getState();
+    sourceRates = state.rates.filter((rate) => rate.factoryId === sourceSelect.value)
+      .sort((a, b) => a.grade.localeCompare(b.grade));
+    const targetRates = state.rates.filter((rate) => rate.factoryId === targetSelect.value);
+    conflicts = sourceRates.map((rate) => ({
+      rate,
+      target: targetRates.find((target) => target.grade.toLowerCase() === rate.grade.toLowerCase())
+    })).filter((entry) => entry.target);
+
+    if (copyMode === 'replace') {
+      replaceGrades.clear();
+      conflicts.forEach(({ rate }) => replaceGrades.add(rate.grade.toLowerCase()));
+    } else {
+      const currentConflicts = new Set(conflicts.map(({ rate }) => rate.grade.toLowerCase()));
+      [...replaceGrades].forEach((grade) => {
+        if (!currentConflicts.has(grade)) replaceGrades.delete(grade);
+      });
+    }
+
+    rows.innerHTML = sourceRates.length ? sourceRates.map((rate, index) => {
+      const target = targetRates.find((item) => item.grade.toLowerCase() === rate.grade.toLowerCase());
+      const replacing = target && replaceGrades.has(rate.grade.toLowerCase());
+      return `<tr>
+        <td>${esc(rate.grade)}</td>
+        <td>${fmtMoney(rate.factoryRate)}</td>
+        <td>${target ? fmtMoney(target.factoryRate) : '—'}</td>
+        <td>${target
+          ? `<button type="button" class="btn btn-secondary copy-lot-grade-action" data-copy-index="${index}">${replacing ? 'Keep Existing' : 'Replace Existing'}</button>`
+          : '<span class="copy-lot-new">New grade</span>'}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="4" class="empty">No source factory rates found.</td></tr>';
+
+    const newCount = sourceRates.length - conflicts.length;
+    const willReplace = conflicts.filter(({ rate }) => replaceGrades.has(rate.grade.toLowerCase())).length;
+    const sourceName = state.factories.find((factory) => factory.id === sourceSelect.value)?.name || '—';
+    const targetName = state.factories.find((factory) => factory.id === targetSelect.value)?.name || '—';
+    summary.innerHTML = `<strong>Copy rates from ${esc(sourceName)} to ${esc(targetName)}</strong>
+      <span>Total Grades: ${sourceRates.length}</span>
+      <span>New Grades: ${newCount}</span>
+      <span>Already Existing: ${conflicts.length}</span>
+      <span>Will Replace: ${willReplace}</span>`;
+
+    const sameFactory = sourceSelect.value === targetSelect.value;
+    error.textContent = sameFactory ? 'Choose different source and destination factories.' : '';
+    overlay.querySelector('[data-copy-confirm]').disabled = sameFactory || sourceRates.length === 0;
+    overlay.querySelectorAll('[data-copy-mode]').forEach((button) => {
+      const selected = button.dataset.copyMode === copyMode;
+      button.classList.toggle('btn-primary', selected);
+      button.classList.toggle('btn-secondary', !selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
+  };
+
+  sourceSelect.addEventListener('change', () => {
+    replaceGrades.clear();
+    renderPreview();
+  });
+  targetSelect.addEventListener('change', () => {
+    replaceGrades.clear();
+    renderPreview();
+  });
+  overlay.querySelectorAll('[data-copy-mode]').forEach((button) => {
+    button.addEventListener('click', () => {
+      copyMode = button.dataset.copyMode;
+      if (copyMode !== 'replace') replaceGrades.clear();
+      renderPreview();
+    });
+  });
+  rows.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-copy-index]');
+    if (!button) return;
+    const rate = sourceRates[Number(button.dataset.copyIndex)];
+    if (!rate) return;
+    const grade = rate.grade.toLowerCase();
+    if (replaceGrades.has(grade)) replaceGrades.delete(grade);
+    else replaceGrades.add(grade);
+    copyMode = 'custom';
+    renderPreview();
+  });
+  overlay.querySelector('[data-copy-cancel]').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('[data-copy-confirm]').addEventListener('click', () => {
+    try {
+      const result = copyRatesBetweenFactories(sourceSelect.value, targetSelect.value, [...replaceGrades]);
+      overlay.remove();
+      toast(`Copy Completed. Added: ${result.added} | Skipped: ${result.skipped} | Replaced: ${result.replaced}`);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+  renderPreview();
+}
+
 export function renderRateMaster(container) {
-  const rates = [...getState().rates].sort((a, b) => a.grade.localeCompare(b.grade));
+  const { rates, factories } = getState();
+  const filteredRates = [...rates]
+    .filter((rate) => activeRateFilter === 'all'
+      || (activeRateFilter === LEGACY_RATE_FACTORY ? !rate.factoryId : rate.factoryId === activeRateFilter))
+    .sort((a, b) => a.grade.localeCompare(b.grade));
+  const factoryOptions = factories.map((factory) => `<option value="${esc(factory.id)}">${esc(factory.name)}</option>`).join('');
+  const rateFilterOptions = factories.map((factory) => `<option value="${esc(factory.id)}" ${activeRateFilter === factory.id ? 'selected' : ''}>${esc(factory.name)}</option>`).join('');
+  const legacySelected = activeRateFilter === LEGACY_RATE_FACTORY ? 'selected' : '';
 
   container.innerHTML = `
     <section class="dealBox">
       <h2>Add / Update Rate</h2>
       <form id="rateForm" class="grid grid-4">
+        <label>Factory
+          <select name="factoryId" required>
+            <option value="">Select factory</option>
+            <option value="${LEGACY_RATE_FACTORY}">Unassigned (legacy / all factories)</option>
+            ${factoryOptions}
+          </select>
+        </label>
         <input name="grade" placeholder="Grade" required />
         <input name="factoryRate" type="number" step="0.01" min="0" placeholder="Factory Rate (₹/KG)" required />
         <input name="commissionPerKg" type="number" step="0.01" min="0" placeholder="Commission (₹/KG)" value="${DEFAULT_COMMISSION}" required />
         <input name="partyRate" type="number" step="0.01" readonly class="readonly" placeholder="Party Rate" />
-        <button type="submit" class="btn btn-primary">Save Rate</button>
+        <input name="rateId" type="hidden" />
+        <button type="submit" class="btn btn-primary">Add / Update Rate</button>
       </form>
     </section>
     <section class="action-bar">
@@ -26,15 +196,24 @@ export function renderRateMaster(container) {
         <span aria-hidden="true">⬆</span> Import Rates from CSV
         <input type="file" accept=".csv" id="importRatesCsv" hidden />
       </label>
+      <button type="button" class="btn btn-secondary" id="copyLotBtn">Copy Lot</button>
     </section>
     <section class="tableBox">
       <h2>Rate Master</h2>
+      <label class="rate-factory-filter">Factory
+        <select id="rateFactoryFilter">
+          <option value="all">All Factories</option>
+          <option value="${LEGACY_RATE_FACTORY}" ${legacySelected}>Unassigned (legacy)</option>
+          ${rateFilterOptions}
+        </select>
+      </label>
       <div class="tableResponsive">
         <table>
-          <thead><tr><th>Grade</th><th>Factory Rate</th><th>Commission/KG</th><th>Party Rate</th><th>Updated</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Factory</th><th>Grade</th><th>Factory Rate</th><th>Commission/KG</th><th>Party Rate</th><th>Updated Date</th><th>Actions</th></tr></thead>
           <tbody>
-            ${rates.length ? rates.map((r) => `
+            ${filteredRates.length ? filteredRates.map((r) => `
               <tr>
+                <td>${esc(factories.find((factory) => factory.id === r.factoryId)?.name || 'Unassigned (legacy)')}</td>
                 <td>${esc(r.grade)}</td>
                 <td>${fmtMoney(r.factoryRate)}</td>
                 <td>${fmtMoney(r.commissionPerKg)}</td>
@@ -44,7 +223,7 @@ export function renderRateMaster(container) {
                   <button type="button" class="editBtn" data-rate-id="${r.id}">Edit</button>
                   <button type="button" class="deleteBtn" data-del-rate="${r.id}">Delete</button>
                 </td>
-              </tr>`).join('') : '<tr><td colspan="6" class="empty">No rates defined.</td></tr>'}
+              </tr>`).join('') : '<tr><td colspan="7" class="empty">No rates defined.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -65,17 +244,30 @@ export function renderRateMaster(container) {
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     try {
-      saveRate(Object.fromEntries(new FormData(form)));
+      const input = Object.fromEntries(new FormData(form));
+      if (input.factoryId === LEGACY_RATE_FACTORY) delete input.factoryId;
+      input.id = input.rateId || undefined;
+      delete input.rateId;
+      saveRate(input);
       toast('Rate saved.');
-      form.reset();
-      form.commissionPerKg.value = DEFAULT_COMMISSION;
     } catch (err) { toast(err.message, 'error'); }
   });
+
+  form.querySelector('[name=factoryId]').value = activeRateFilter === LEGACY_RATE_FACTORY
+    ? LEGACY_RATE_FACTORY
+    : (activeRateFilter === 'all' ? '' : activeRateFilter);
+  container.querySelector('#rateFactoryFilter').addEventListener('change', (event) => {
+    activeRateFilter = event.target.value;
+    renderRateMaster(container);
+  });
+  container.querySelector('#copyLotBtn').addEventListener('click', renderCopyLotModal);
 
   container.querySelectorAll('[data-rate-id]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const r = getState().rates.find((x) => x.id === btn.dataset.rateId);
       if (!r) return;
+      form.factoryId.value = r.factoryId || LEGACY_RATE_FACTORY;
+      form.rateId.value = r.id;
       form.grade.value = r.grade;
       form.factoryRate.value = r.factoryRate;
       form.commissionPerKg.value = r.commissionPerKg;
@@ -97,7 +289,12 @@ export function renderRateMaster(container) {
     try {
       const result = await importRatesFromCsv(file);
       if (result.ratesData && result.ratesData.length > 0) {
-        result.ratesData.forEach((rate) => saveRate(rate));
+        const importedRates = result.ratesData.map((rate) => {
+          if (!rate.factoryName) return rate;
+          const factory = findOrCreateFactory(rate.factoryName);
+          return { ...rate, factoryId: factory.id };
+        });
+        saveRates(importedRates);
       }
       toast(`Imported ${result.imported} rates successfully.`);
       if (result.errors.length > 0) {
@@ -227,6 +424,13 @@ function updateDealTotals(container) {
 function bindGradeTable(container, s) {
   const tbody = container.querySelector('#gradeTableBody');
 
+  const findFactoryRate = (grade) => {
+    const currentState = getState();
+    const factoryName = container.querySelector('[name=factoryName]').value.trim().toLowerCase();
+    const factory = currentState.factories.find((item) => item.name.trim().toLowerCase() === factoryName);
+    return getRateForFactory(grade, factory?.id);
+  };
+
   const refreshAll = () => {
     tbody.querySelectorAll('.grade-row').forEach((tr) => updateRowCalc(tr, s));
     updateDealTotals(container);
@@ -249,7 +453,7 @@ function bindGradeTable(container, s) {
   function onChange(e) {
     if (!e.target.classList.contains('grade-input')) return;
     const tr = e.target.closest('.grade-row');
-    const r = getState().rates.find((x) => x.grade.toLowerCase() === e.target.value.trim().toLowerCase());
+    const r = findFactoryRate(e.target.value);
     if (r) {
       tr.querySelector('.factory-rate-input').value = r.factoryRate;
       tr.querySelector('.commission-input').value = r.commissionPerKg;
@@ -269,6 +473,17 @@ function bindGradeTable(container, s) {
   tbody.addEventListener('input', onInput);
   tbody.addEventListener('change', onChange);
   tbody.addEventListener('click', onClick);
+
+  container.querySelector('[name=factoryName]').addEventListener('change', () => {
+    tbody.querySelectorAll('.grade-row').forEach((tr) => {
+      const grade = tr.querySelector('.grade-input').value;
+      if (!grade.trim()) return;
+      const rate = findFactoryRate(grade);
+      tr.querySelector('.factory-rate-input').value = rate?.factoryRate ?? '';
+      tr.querySelector('.commission-input').value = rate?.commissionPerKg ?? (s.defaultCommissionPerKg ?? DEFAULT_COMMISSION);
+    });
+    refreshAll();
+  });
 
   // Helper: attach direct listeners to a specific row for immediate two-way sync
   function attachRowListeners(tr) {
@@ -335,7 +550,9 @@ export function renderNewDeal(container, editId = null) {
   const raw = editId ? getState().deals.find((x) => x.id === editId) : null;
   const d = raw ? normalizeDeal(raw) : null;
   const parties = getState().parties.map((p) => `<option value="${esc(p.name)}">`).join('');
-  const factories = getState().factories.map((f) => `<option value="${esc(f.name)}">`).join('');
+  const factories = getState().factories
+    .filter((factory) => factory.active !== false || factory.name === d?.factoryName)
+    .map((f) => `<option value="${esc(f.name)}">`).join('');
   const grades = getState().rates.map((r) => `<option value="${esc(r.grade)}">`).join('');
   const initialRows = d ? getDealGrades(d).map((g) => defaultGradeRow(s, g)) : [defaultGradeRow(s)];
   const dealType = d?.type || 'SALE';

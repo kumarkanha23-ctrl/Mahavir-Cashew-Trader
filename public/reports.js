@@ -1,6 +1,6 @@
 import {
   getState, dashboardMetrics, filterDeals, partyLedger, factoryLedger,
-  saveDeal, updateSettings, updateParty, updateFactory, deleteParty, deleteFactory,
+  saveDeal, saveFactory, updateSettings, updateParty, updateFactory, deleteParty, deleteFactory,
   exportBackupFile, importBackupFile, clearAllData,
   getLastBackupInfo, readBackupPreview, showBackupPreviewModal,
   fmtDate, fmtMoney, fmtNum, esc, toast, confirmAction, today,
@@ -299,6 +299,18 @@ export function renderSettings(container) {
       <p class="hint">Bucket × ${s.bucketToKg || BUCKET_TO_KG} = KG | Data syncs in real time via Firestore. Optional RTDB cloud backup above.</p>
     </section>
     ${renderEntityTable('Parties', parties, 'party')}
+    <section class="dealBox">
+      <h2>Add Factory</h2>
+      <form id="factoryForm" class="grid grid-4">
+        <label>Factory Name<input name="name" required /></label>
+        <label>Mobile<input name="phone" type="tel" /></label>
+        <label>WhatsApp<input name="whatsappNumber" type="tel" /></label>
+        <label>Address<input name="address" /></label>
+        <label>Notes<input name="notes" /></label>
+        <label>Status<select name="active"><option value="true">Active</option><option value="false">Inactive</option></select></label>
+        <button type="submit" class="btn btn-primary">Add Factory</button>
+      </form>
+    </section>
     ${renderEntityTable('Factories', factories, 'factory')}`;
 
   container.querySelector('#settingsForm').addEventListener('submit', (e) => {
@@ -322,17 +334,33 @@ export function renderSettings(container) {
     toast('Settings saved.');
   });
 
+  container.querySelector('#factoryForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target));
+    data.active = data.active === 'true';
+    try {
+      saveFactory(data);
+      toast('Factory added.');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+
   bindEntityEdits(container, 'party');
   bindEntityEdits(container, 'factory');
 }
 
 function renderEntityTable(title, items, type) {
+  const isFactory = type === 'factory';
+  const headers = isFactory
+    ? '<th>Name</th><th>Mobile</th><th>WhatsApp Number</th><th>Address</th><th>Notes</th><th>Status</th><th>Actions</th>'
+    : '<th>Name</th><th>Phone</th><th>WhatsApp Number</th><th>Address</th><th>Actions</th>';
   return `
     <section class="tableBox">
-      <h2>${title}</h2>
+      <h2>${isFactory ? 'Factory Master' : title}</h2>
       <div class="tableResponsive">
         <table>
-          <thead><tr><th>Name</th><th>Phone</th><th>WhatsApp Number</th><th>Address</th><th>Actions</th></tr></thead>
+          <thead><tr>${headers}</tr></thead>
           <tbody>
             ${items.length ? items.map((item) => `
               <tr data-entity="${type}" data-id="${item.id}">
@@ -340,8 +368,14 @@ function renderEntityTable(title, items, type) {
                 <td><input class="inline-input" data-field="phone" value="${esc(item.phone || '')}" /></td>
                 <td><input class="inline-input" data-field="whatsappNumber" value="${esc(item.whatsappNumber || '')}" /></td>
                 <td><input class="inline-input" data-field="address" value="${esc(item.address || '')}" /></td>
+                ${isFactory ? `
+                  <td><input class="inline-input" data-field="notes" value="${esc(item.notes || '')}" /></td>
+                  <td><select class="inline-input" data-field="active">
+                    <option value="true" ${item.active === false ? '' : 'selected'}>Active</option>
+                    <option value="false" ${item.active === false ? 'selected' : ''}>Inactive</option>
+                  </select></td>` : ''}
                 <td><button type="button" class="deleteBtn" data-del-entity="${type}" data-id="${item.id}">Delete</button></td>
-              </tr>`).join('') : `<tr><td colspan="5" class="empty">No ${title.toLowerCase()} yet.</td></tr>`}
+              </tr>`).join('') : `<tr><td colspan="${isFactory ? 7 : 5}" class="empty">No ${title.toLowerCase()} yet.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -355,7 +389,18 @@ function bindEntityEdits(container, type) {
   container.querySelectorAll(`tr[data-entity="${type}"]`).forEach((row) => {
     row.querySelectorAll('.inline-input').forEach((input) => {
       input.addEventListener('change', () => {
-        updater(row.dataset.id, { [input.dataset.field]: input.value });
+        const value = input.dataset.field === 'active' ? input.value === 'true' : input.value;
+        try {
+          updater(row.dataset.id, { [input.dataset.field]: value });
+        } catch (err) {
+          const entity = type === 'factory'
+            ? getState().factories.find((item) => item.id === row.dataset.id)
+            : getState().parties.find((item) => item.id === row.dataset.id);
+          if (entity) input.value = input.dataset.field === 'active'
+            ? String(entity.active !== false)
+            : (entity[input.dataset.field] || '');
+          toast(err.message, 'error');
+        }
       });
     });
   });
