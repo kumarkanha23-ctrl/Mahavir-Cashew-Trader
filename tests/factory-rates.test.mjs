@@ -105,7 +105,7 @@ assert.ok(!appSource.includes('SIBA_RATE_ASSIGNMENT_EXPECTED'));
 app.state.factories = [{ id: 'siba-id', name: ' Siba ' }];
 app.state.rates = sibaMappingValues.map(([grade, factoryRate, partyRate], index) => ({
   id: `legacy-${index}`,
-  grade,
+  grade: grade === 'Special JH' ? ' Special jh ' : grade,
   factoryRate,
   commissionPerKg: 5,
   partyRate,
@@ -156,9 +156,11 @@ assert.equal(firestoreRateWrites.length, 1);
 app.state.rates = sibaMappingValues.map(([grade, factoryRate, partyRate], index) => ({
   id: `legacy-${index}`, grade, factoryRate, commissionPerKg: 5, partyRate
 }));
-app.state.rates.push({ ...app.state.rates[0], id: 'duplicate-grade' });
+const specialJHRate = app.state.rates.find((rate) => rate.grade === 'Special JH');
+specialJHRate.grade = 'Special jh';
+app.state.rates.push({ ...specialJHRate, id: 'duplicate-special-jh' });
 const stateBeforeDuplicateGrade = JSON.stringify(app.state.rates);
-await assert.rejects(app.assignExistingRatesToSiba(), /exactly one existing 1st SW rate record/);
+await assert.rejects(app.assignExistingRatesToSiba(), /exactly one existing Special JH rate record/);
 assert.equal(JSON.stringify(app.state.rates), stateBeforeDuplicateGrade);
 assert.equal(firestoreRateWrites.length, 1);
 

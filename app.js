@@ -1214,7 +1214,10 @@ export async function assignExistingRatesToSiba() {
   if (!sibaFactoryId) throw new Error('The SIBA factory has no ID.');
   const targetRates = [];
   SIBA_RATE_GRADES.forEach((grade) => {
-    const matches = state.rates.filter((rate) => rate && rate.grade === grade);
+    const normalizedGrade = grade.trim().toLowerCase();
+    const matches = state.rates.filter((rate) =>
+      typeof rate?.grade === 'string' && rate.grade.trim().toLowerCase() === normalizedGrade
+    );
     if (matches.length !== 1) {
       throw new Error(`Expected exactly one existing ${grade} rate record; found ${matches.length}. No rates were changed.`);
     }
