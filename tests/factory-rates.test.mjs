@@ -9,12 +9,10 @@ appSource = appSource
   .replace(/\nbootstrap\(\);\s*$/, '');
 const context = vm.createContext({ console, Date, Math, Intl, URLSearchParams });
 vm.runInContext(`${appSource}
-let persistCalls = 0;
-persist = () => { persistCalls += 1; };
+persist = () => {};
 globalThis.testApp = {
   state, calcDeal, saveDeal, saveRate, saveFactory, findOrCreateFactory,
-  getRateForFactory, copyRatesBetweenFactories, assignLegacyRatesToSiba,
-  normalizeDeal, getPersistCalls: () => persistCalls
+  getRateForFactory, copyRatesBetweenFactories, normalizeDeal
 };`, context);
 const app = context.testApp;
 const factoryA = 'factory-a';
@@ -88,94 +86,84 @@ const sibaMappingValues = [
   ['W240', 805, 810],
   ['W320', 785, 790]
 ];
-app.state.factories = [{ id: 'siba-id', name: 'SIBA' }];
-app.state.rates = sibaMappingValues.map(([grade, factoryRate, partyRate]) => ({
-  id: `legacy-${grade}`,
-  grade,
-  factoryRate,
-  commissionPerKg: 5,
-  partyRate,
-  updatedAt: '2026-08-10T00:00:00.000Z'
-}));
-const ratesBeforeSibaAssignment = JSON.parse(JSON.stringify(app.state.rates));
-const persistCallsBeforeAssignment = app.getPersistCalls();
-const sibaAssignment = app.assignLegacyRatesToSiba();
-assert.deepEqual(JSON.parse(JSON.stringify(sibaAssignment)), { assignedCount: 10, reason: null });
-assert.equal(app.state.rates.length, 10);
-app.state.rates.forEach((rate, index) => {
-  const before = ratesBeforeSibaAssignment[index];
-  assert.equal(rate.factoryId, 'siba-id');
-  assert.deepEqual(
-    JSON.parse(JSON.stringify(Object.fromEntries(Object.entries(rate).filter(([key]) => key !== 'factoryId')))),
-    before
-  );
-});
-assert.equal(app.getPersistCalls(), persistCallsBeforeAssignment + 1);
-const mappedRatesSnapshot = JSON.stringify(app.state.rates);
-assert.deepEqual(JSON.parse(JSON.stringify(app.assignLegacyRatesToSiba())), { assignedCount: 0, reason: null });
-assert.equal(JSON.stringify(app.state.rates), mappedRatesSnapshot);
-assert.equal(app.getPersistCalls(), persistCallsBeforeAssignment + 1);
-
-app.state.rates = sibaMappingValues.map(([grade, factoryRate, partyRate]) => ({
-  id: `legacy-${grade}`,
-  grade,
-  factoryRate,
-  commissionPerKg: 5,
-  partyRate,
-  updatedAt: '2026-08-10T00:00:00.000Z'
-}));
-app.state.rates.find((rate) => rate.grade === 'W160').partyRate = 856;
-const mismatchRatesSnapshot = JSON.stringify(app.state.rates);
-const persistCallsBeforeMismatch = app.getPersistCalls();
-const mismatchAssignment = app.assignLegacyRatesToSiba();
-assert.equal(mismatchAssignment.assignedCount, 0);
-assert.match(mismatchAssignment.reason, /W160/);
-assert.equal(JSON.stringify(app.state.rates), mismatchRatesSnapshot);
-assert.equal(app.getPersistCalls(), persistCallsBeforeMismatch);
-
-app.state.rates = sibaMappingValues.map(([grade, factoryRate, partyRate]) => ({
-  id: `legacy-${grade}`,
-  grade,
-  factoryRate,
-  commissionPerKg: 5,
-  partyRate,
-  updatedAt: '2026-08-10T00:00:00.000Z'
-}));
-app.state.factories.push({ id: 'siba-duplicate', name: ' Siba ' });
-const duplicateFactoryRatesSnapshot = JSON.stringify(app.state.rates);
-const duplicateFactoryAssignment = app.assignLegacyRatesToSiba();
-assert.equal(duplicateFactoryAssignment.assignedCount, 0);
-assert.match(duplicateFactoryAssignment.reason, /exactly one SIBA factory/);
-assert.equal(JSON.stringify(app.state.rates), duplicateFactoryRatesSnapshot);
-
 const dealsSource = await readFile(new URL('../deals.js', import.meta.url), 'utf8');
 assert.ok(dealsSource.includes("container.querySelector('[name=factoryName]').addEventListener('change'"));
 assert.ok(dealsSource.includes('getRateForFactory(grade, factory?.id)'));
 assert.ok(dealsSource.includes('copyRatesBetweenFactories(sourceSelect.value, targetSelect.value'));
 assert.ok(dealsSource.includes('READ ONLY — NO DATA WILL BE CHANGED'));
-assert.ok(dealsSource.includes('container.querySelector(\'#diagnoseW160Btn\').addEventListener'));
+assert.ok(dealsSource.includes('container.querySelector(\'#diagnoseSibaBtn\').addEventListener'));
 assert.ok(dealsSource.includes('JSON.stringify(rate, null, 2)'));
-assert.ok(appSource.includes('if (Array.isArray(data?.rates) && Array.isArray(data?.factories))'));
-assert.ok(appSource.includes('const assignment = assignLegacyRatesToSiba();'));
+assert.ok(dealsSource.includes(".get({ source: 'server' })"));
+assert.ok(!appSource.includes('assignLegacyRatesToSiba'));
+assert.ok(!appSource.includes('SIBA_RATE_ASSIGNMENT_EXPECTED'));
 
-const dealsContext = vm.createContext({ console, JSON, Set, esc: (value) => String(value) });
+const serverSnapshot = (id, payload) => ({
+  exists: true,
+  ref: { id },
+  data: () => ({ payload })
+});
+let serverReadCalls = 0;
+const serverDocuments = {
+  rates: sibaMappingValues.map(([grade, factoryRate, partyRate]) => ({
+    id: `legacy-${grade}`, grade, factoryRate, commissionPerKg: 5, partyRate
+  })),
+  factories: [{ id: 'siba-id', name: ' Siba ', active: true }]
+};
+const fakeFirestore = {
+  collection: (collectionName) => {
+    assert.equal(collectionName, 'users');
+    return { doc: (userId) => {
+      assert.equal(userId, 'live-user');
+      return { collection: (subcollection) => {
+        assert.equal(subcollection, 'erp');
+        return { doc: (docId) => ({
+          get: async (options) => {
+            assert.deepEqual(JSON.parse(JSON.stringify(options)), { source: 'server' });
+            serverReadCalls++;
+            return serverSnapshot(docId, serverDocuments[docId]);
+          }
+        }) };
+      } };
+    } };
+  }
+};
+const dealsContext = vm.createContext({
+  console,
+  JSON,
+  Set,
+  Number,
+  Promise,
+  isFirestoreReady: () => true,
+  isUserSignedIn: () => true,
+  getAuth: () => ({ currentUser: { uid: 'live-user' } }),
+  getFirestore: () => fakeFirestore
+});
 vm.runInContext(`${dealsSource
   .replace(/^import\s[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '')
   .replace(/^export\s+/gm, '')}
-globalThis.testDiagnosis = diagnoseW160Rates;`, dealsContext);
+globalThis.testDiagnosis = diagnoseSibaMapping;
+globalThis.testReadSibaMapping = readSibaMappingFromFirestore;`, dealsContext);
 const diagnose = dealsContext.testDiagnosis;
-const exactW160 = { id: 'w160-1', grade: 'W160', factoryRate: 850, commissionPerKg: 5, partyRate: 855 };
-const factories = [{ id: 'siba-id', name: 'SIBA' }, { id: 'other-id', name: 'Other Factory' }];
-assert.equal(diagnose([], factories).primaryCode, 'E');
-assert.equal(diagnose([{ ...exactW160 }], factories).primaryCode, 'A');
-assert.equal(diagnose([{ ...exactW160, factoryRate: 851 }], factories).primaryCode, 'B');
-assert.equal(diagnose([{ ...exactW160 }, { ...exactW160, id: 'w160-2' }], factories).primaryCode, 'C');
-assert.equal(diagnose([{ ...exactW160, factoryId: 'siba-id' }], factories).primaryCode, 'D');
-assert.equal(diagnose([{ ...exactW160, factoryId: 'other-id' }], factories).primaryCode, 'F');
-const rawDiagnosticRecord = { ...exactW160, factoryRate: '850', customField: { untouched: true } };
-const rawBeforeDiagnostic = JSON.stringify(rawDiagnosticRecord);
-const diagnosticResult = diagnose([rawDiagnosticRecord], factories);
-assert.equal(diagnosticResult.primaryCode, 'B');
-assert.equal(JSON.stringify(rawDiagnosticRecord), rawBeforeDiagnostic);
+const exactRecords = sibaMappingValues.map(([grade, factoryRate, partyRate]) => ({
+  id: `legacy-${grade}`, grade, factoryRate, commissionPerKg: 5, partyRate
+}));
+const sibaFactory = [{ id: 'siba-id', name: ' Siba ', active: true }];
+assert.equal(diagnose(exactRecords, sibaFactory).finalResult, 'All conditions pass');
+assert.equal(diagnose(exactRecords, []).finalResult, 'SIBA factory not found');
+assert.equal(diagnose(exactRecords, [...sibaFactory, { id: 'siba-2', name: 'SIBA' }]).finalResult, 'Multiple SIBA factories found');
+assert.equal(diagnose([...exactRecords, { ...exactRecords[0], id: 'duplicate' }], sibaFactory).finalResult, 'Legacy grade mismatch');
+assert.equal(diagnose([...exactRecords, { ...exactRecords[0], id: 'siba-copy', factoryId: 'siba-id' }], sibaFactory).finalResult, 'Existing SIBA rate conflict');
+assert.equal(diagnose(exactRecords.map((rate) => rate.grade === 'W160' ? { ...rate, grade: ' w160 ' } : rate), sibaFactory).finalResult, 'Grade normalization problem');
+assert.equal(diagnose(exactRecords.map((rate) => rate.grade === 'W160' ? { ...rate, partyRate: 856 } : rate), sibaFactory).finalResult, 'Rate value mismatch');
+assert.equal(diagnose(exactRecords.map((rate) => rate.grade === 'W160' ? { ...rate, factoryId: 'missing-factory' } : rate), sibaFactory).finalResult, 'Factory ID resolution problem');
+const diagnosticInputSnapshot = JSON.stringify(exactRecords);
+diagnose(exactRecords, sibaFactory);
+assert.equal(JSON.stringify(exactRecords), diagnosticInputSnapshot);
+assert.equal(serverReadCalls, 0);
+const readLiveData = await dealsContext.testReadSibaMapping();
+assert.equal(serverReadCalls, 2);
+assert.deepEqual(JSON.parse(JSON.stringify(readLiveData.factories)), serverDocuments.factories);
+assert.deepEqual(JSON.parse(JSON.stringify(readLiveData.rates)), serverDocuments.rates);
+assert.equal(diagnose(readLiveData.rates, readLiveData.factories).finalResult, 'All conditions pass');
 
-console.log('Factory-wise rate, safe copy, deal snapshot, and bucket/KG regression checks passed.');
+console.log('Factory-wise rate, read-only SIBA diagnostics, deal snapshot, and bucket/KG regression checks passed.');

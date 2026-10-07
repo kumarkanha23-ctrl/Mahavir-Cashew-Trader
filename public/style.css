@@ -3540,6 +3540,23 @@ input::placeholder {
   overflow-wrap: anywhere;
 }
 
+.siba-grade-diagnostic {
+  margin-top: 18px;
+}
+
+.siba-grade-diagnostic h4 {
+  margin: 10px 0 4px;
+  color: var(--primary);
+}
+
+.siba-grade-diagnostic .tableResponsive {
+  margin-top: 8px;
+}
+
+.siba-grade-diagnostic table {
+  min-width: 1050px;
+}
+
 @media (max-width: 600px) {
   .copy-lot-factories {
     grid-template-columns: 1fr;
